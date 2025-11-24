@@ -1,0 +1,59 @@
+# ============================================================
+# Python Dependencies for joungwon.stocks
+# ============================================================
+
+# Core Dependencies
+python-dotenv==1.0.0
+pydantic==2.5.0
+pydantic-settings==2.1.0
+
+# Async & Database
+asyncio==3.4.3
+asyncpg==0.29.0
+aiohttp==3.9.1
+aiodns==3.1.1
+
+# Tier 1: Official Libraries
+pykrx==1.0.46
+dart-fss==0.4.2
+FinanceDataReader==0.9.50
+opendartreader==0.2.0
+
+# Tier 2: Official APIs
+python-kis==1.0.5
+
+# Tier 3: Web Scraping
+beautifulsoup4==4.12.2
+lxml==4.9.3
+scrapy==2.11.0
+requests==2.31.0
+
+# Tier 4: Browser Automation
+playwright==1.40.0
+DrissionPage==4.0.5.6
+
+# Data Processing
+pandas==2.1.4
+numpy==1.26.2
+pandas-ta==0.3.14b
+
+# AI & Machine Learning
+tensorflow==2.15.0
+# google-generativeai==0.3.2
+transformers==4.36.2
+
+# Validation & Schemas
+jsonschema==4.20.0
+
+# Logging & Monitoring
+structlog==23.2.0
+python-json-logger==2.0.7
+
+# Testing
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0
+
+# Utilities
+pytz==2023.3
+python-dateutil==2.8.2

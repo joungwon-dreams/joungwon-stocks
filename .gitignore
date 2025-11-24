@@ -52,11 +52,6 @@ Thumbs.db
 *.log
 logs/
 
-# Data files
-data/raw/*
-data/processed/*
-!data/.gitkeep
-
 # Model files
 models/*.h5
 models/*.pkl
