@@ -207,7 +207,7 @@ class NewsCollectorAndPDFGenerator:
             result = subprocess.run(
                 [
                     '/Users/wonny/Dev/joungwon.stocks/venv/bin/python',
-                    '/Users/wonny/Dev/joungwon.stocks/scripts/gemini/generate_single_report.py',
+                    '/Users/wonny/Dev/joungwon.stocks/scripts/gemini/generate_pdf_report.py',
                     stock_code
                 ],
                 capture_output=True,
