@@ -1071,11 +1071,11 @@ async def main():
     await db.connect()
     try:
         # Get all holding stocks
-        # rows = await db.fetch("SELECT stock_code, stock_name FROM stock_assets ORDER BY stock_name")
-        # stock_codes = [r['stock_code'] for r in rows]
+        rows = await db.fetch("SELECT stock_code, stock_name FROM stock_assets ORDER BY stock_name")
+        stock_codes = [r['stock_code'] for r in rows]
         
         # For testing, only process 한국전력
-        stock_codes = ['015760'] 
+        # stock_codes = ['015760'] 
         
         print(f"\n{'='*60}")
         print(f"🚀 Generating PDF Reports for {len(stock_codes)} Holdings")
