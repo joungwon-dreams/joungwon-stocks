@@ -684,9 +684,27 @@ class PDFReportGenerator:
         story.append(Paragraph(summary_text, normal_style))
         story.append(Spacer(1, 0.3*cm))
 
-        # --- Investment Consensus (Moved) ---
+
+
+        # 2-Week Price Trend Mini Section
+        if (self.chart_dir / 'mini_2week_chart.png').exists():
+            # Calculate change
+            if len(self.ohlcv) >= 14:
+                price_2w_ago = self.ohlcv[13]['close']
+                current_p = self.ohlcv[0]['close']
+                change_rate = ((current_p - price_2w_ago) / price_2w_ago) * 100
+                change_text = f"Change (2W): {change_rate:+.2f}%"
+                change_color = '#D32F2F' if change_rate > 0 else '#1976D2'
+                
+                story.append(Paragraph(f"<b>Recent 2-Week Trend: <font color='{change_color}'>{change_text}</font></b>", normal_style))
+                story.append(Spacer(1, 0.2*cm))
+                story.append(Image(str(self.chart_dir / 'mini_2week_chart.png'), width=14*cm, height=5*cm))
+        
+        story.append(Spacer(1, 0.5*cm))
+
+        # --- Investment Consensus (Moved again) ---
         # 기준 날짜 (YY.MM.DD)
-        print("DEBUG: Generating Investment Consensus Section (Moved)...")
+        print("DEBUG: Generating Investment Consensus Section (Moved after 2-Week Chart)...")
         today_str = datetime.now().strftime("%y.%m.%d")
         story.append(Paragraph(f"투자의견 컨센서스 <font size=10 color='#777'>(기준:{today_str})</font>", heading_style))
 
@@ -699,7 +717,7 @@ class PDFReportGenerator:
 
         story.append(Spacer(1, 0.5*cm))
 
-        # --- Analyst Targets Table (Moved) ---
+        # --- Analyst Targets Table (Moved again) ---
         if self.analyst_targets:
             story.append(Paragraph("증권사 목표가", heading_style))
             target_data = [['일자', '목표주가', '이전대비', '투자의견', '증권사', '리포트']]
@@ -788,24 +806,6 @@ class PDFReportGenerator:
 
             story.append(target_table)
             story.append(Spacer(1, 1*cm))
-        
-        story.append(PageBreak())
-
-        # 2-Week Price Trend Mini Section
-        if (self.chart_dir / 'mini_2week_chart.png').exists():
-            # Calculate change
-            if len(self.ohlcv) >= 14:
-                price_2w_ago = self.ohlcv[13]['close']
-                current_p = self.ohlcv[0]['close']
-                change_rate = ((current_p - price_2w_ago) / price_2w_ago) * 100
-                change_text = f"Change (2W): {change_rate:+.2f}%"
-                change_color = '#D32F2F' if change_rate > 0 else '#1976D2'
-                
-                story.append(Paragraph(f"<b>Recent 2-Week Trend: <font color='{change_color}'>{change_text}</font></b>", normal_style))
-                story.append(Spacer(1, 0.2*cm))
-                story.append(Image(str(self.chart_dir / 'mini_2week_chart.png'), width=14*cm, height=5*cm))
-        
-        story.append(Spacer(1, 0.5*cm))
 
         # Holding Status (New Section)
         if hasattr(self, 'holding') and self.holding:
