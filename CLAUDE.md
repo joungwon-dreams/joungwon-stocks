@@ -4,76 +4,43 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**joungwon.stocks** is an enterprise-grade AI-powered automated stock trading system for the Korean stock market. The system integrates:
+**joungwon.stocks** is an enterprise-grade AI-powered automated stock trading system for the Korean stock market. The system collects data from 41+ Korean investment analysis websites through a 4-tier architecture, analyzes them using Gemini AI, and executes automated trades via Korea Investment Securities API.
 
-- **Real-time data collection** from 41+ Korean investment analysis websites
-- **Reinforcement learning** (A2C) for trading strategies
-- **Gemini AI** for news sentiment analysis
-- **Korea Investment Securities API** for automated trading
-
-### Technology Stack
-
-- **Language**: Python 3.9+
-- **Database**: PostgreSQL 14.20
-- **Async**: asyncio, aiohttp, asyncpg
-- **ML/AI**: TensorFlow 2.x / PyTorch, Google Gemini Pro
-- **Data Collection**: pykrx, FinanceDataReader, Scrapy, Playwright
-
-### Project Status
-
-Phase 1 (Data Collection Enhancement) - In Progress
+**Status**: Phase 1 (Data Collection Enhancement) - In Progress
 
 ## Development Commands
 
-### Installation
-
 ```bash
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate
-
-# Install dependencies
+# Installation
+python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 
-# Initialize database
+# Database setup
 createdb stock_investment_db
 psql -U wonny -d stock_investment_db -f sql/01_create_tables.sql
-```
 
-### Data Collection
+# Run orchestrator (collects from all 41 sites)
+python src/core/orchestrator.py
 
-```bash
-# Initialize stock list (KRX all stocks)
+# Test specific tier
+python scripts/test_tier3_scrapers.py      # Web scraping
+python scripts/test_tier4_fnguide.py       # Browser automation
+
+# Test specific fetcher
+python scripts/test_fetchers.py
+
+# Run orchestrator tests
+python scripts/test_orchestrator.py
+
+# Initialize stock list from KRX
 python scripts/initialize_stocks.py
 
-# Collect daily OHLCV data
-python scripts/collect_daily_ohlcv.py
+# Generate reports
+python scripts/generate_comprehensive_holdings_report.py
+python scripts/generate_holding_research_pdf.py
 
-# Run orchestrator (all tiers)
-python src/core/orchestrator.py
-```
-
-### Real-time Trading
-
-```bash
-# Start WebSocket real-time feed
+# WebSocket real-time feed
 python src/fetchers/tier2_official_apis/kis_websocket.py
-
-# Run news analysis
-python scripts/run_news_analysis.py
-```
-
-### Testing
-
-```bash
-# Run unit tests
-pytest tests/unit/
-
-# Run integration tests
-pytest tests/integration/
-
-# Generate coverage report
-pytest --cov=src --cov-report=html
 ```
 
 ## Architecture
@@ -81,166 +48,149 @@ pytest --cov=src --cov-report=html
 ### 4-Tier Data Collection System
 
 ```
-Tier 1 (Official Libraries):
-  - pykrx (KRX data)
-  - dart-fss (DART filings)
-  - FinanceDataReader (stock listings)
-
-Tier 2 (Official APIs):
-  - Korea Investment Securities API (WebSocket + REST)
-  - Naver Finance API
-
-Tier 3 (Web Scraping):
-  - Scrapy spiders (30+ sites)
-  - News crawlers
-
-Tier 4 (Browser Automation):
-  - Playwright (JavaScript-heavy sites)
-  - DrissionPage (bot detection bypass)
+                    ORCHESTRATOR
+                (src/core/orchestrator.py)
+        Manages rate limiting, concurrency (semaphore),
+           retry logic, and tier execution order
+                        │
+    ┌───────────────────┼───────────────────┐
+    │                   │                   │
+    ▼                   ▼                   ▼
+┌─────────┐      ┌─────────────┐      ┌─────────────┐
+│ Tier 1  │      │   Tier 2    │      │ Tier 3 + 4  │
+│Official │      │Official APIs│      │Web Scraping │
+│Libraries│      │             │      │+ Playwright │
+└────┬────┘      └──────┬──────┘      └──────┬──────┘
+     │                  │                    │
+     └──────────────────┼────────────────────┘
+                        ▼
+            ┌─────────────────────┐
+            │   PostgreSQL DB     │
+            │   (13 tables)       │
+            └──────────┬──────────┘
+                       ▼
+            ┌─────────────────────┐
+            │   Gemini AI         │
+            │   Analysis          │
+            └──────────┬──────────┘
+                       ▼
+            ┌─────────────────────┐
+            │   Auto Trading      │
+            │   (KIS API)         │
+            └─────────────────────┘
 ```
 
-### Data Flow
+### Tier Details
+
+| Tier | Type | Sources | Technology |
+|------|------|---------|------------|
+| 1 | Official Libraries | pykrx, dart-fss, FinanceDataReader, OpenDART | Python packages |
+| 2 | Official APIs | Korea Investment, Naver Finance, Daum Finance, KRX Data, KOFIA | REST + WebSocket |
+| 3 | Web Scraping | 24+ securities/news sites | aiohttp + BeautifulSoup |
+| 4 | Browser Automation | FnGuide, Naver News (JS-heavy) | Playwright with anti-detection |
+
+### Key Modules
 
 ```
-Data Sources (41 sites)
-  ↓
-Fetchers (Tier 1-4)
-  ↓
-Pipelines (Validation, Transformation, Storage)
-  ↓
-PostgreSQL (13 tables)
-  ↓
-AI Analysis (RL, Sentiment)
-  ↓
-Automated Trading
+src/
+├── core/
+│   ├── orchestrator.py    # Main coordinator (rate limiting, concurrency)
+│   ├── base_fetcher.py    # Abstract base for all fetchers
+│   ├── rate_limiter.py    # Token bucket algorithm per site
+│   └── retry.py           # Exponential backoff decorators
+├── config/
+│   ├── database.py        # AsyncPG connection pool (5-20 connections)
+│   └── settings.py        # Pydantic settings from .env
+├── fetchers/
+│   ├── tier1_official_libs/   # 4 fetchers
+│   ├── tier2_official_apis/   # 5 fetchers
+│   ├── tier3_web_scraping/    # 24+ scrapers
+│   └── tier4_browser_automation/  # 4 Playwright fetchers
+└── gemini/
+    └── client.py          # Google Gemini API wrapper
 ```
 
-## Database Schema
+## Core Patterns
 
-### Primary Tables
+### BaseFetcher Pattern
 
-1. **Master Group**
-   - `stocks`: Stock master data
-   - `stock_assets`: Holdings and trading settings
-
-2. **Price Data Group**
-   - `daily_ohlcv`: Daily OHLCV (1 year)
-   - `min_ticks`: Real-time ticks (1 minute)
-   - `stock_prices_10min`: 10-minute technical indicators
-   - `stock_supply_demand`: Institutional trading data
-
-3. **Trading Group**
-   - `trade_history`: All buy/sell records + AI reasoning
-   - `stock_opinions`: Investment opinions and price targets
-
-4. **AI Recommendation Group**
-   - `data_sources`: Data source reliability tracking
-   - `recommendation_history`: AI/expert recommendations
-   - `verification_results`: Accuracy verification
-
-5. **Scoring Group**
-   - `stock_score_weights`: Per-stock weights (chart/supply/value)
-   - `stock_score_history`: Daily scores and signals
-
-### Key Features
-
-- **Real-time triggers**: `min_ticks` INSERT → `stock_assets.price` auto-update
-- **Composite indexes**: Optimized for time-series queries
-- **AI reasoning storage**: `gemini_reasoning` field in `trade_history`
-
-## API Routes
-
-### Korea Investment Securities API
-
-**Authentication**:
-```python
-from pykis import PyKis
-kis = PyKis()
-```
-
-**WebSocket** (Real-time):
-```python
-stock = kis.stock("005930")
-
-@stock.on_price
-def on_price(price):
-    # Handle real-time price updates
-    pass
-```
-
-**REST API**:
-```python
-# Buy/Sell
-stock.buy(price=194700, qty=1)
-stock.sell(price=195000)
-
-# Balance
-balance = kis.balance()
-```
-
-### Gemini API
-
-```python
-import google.generativeai as genai
-
-genai.configure(api_key=API_KEY)
-model = genai.GenerativeModel('gemini-pro')
-response = model.generate_content(prompt)
-```
-
-## Important Patterns
-
-### Fetcher Pattern
-
-All fetchers inherit from `BaseFetcher`:
+All data collectors inherit from `BaseFetcher` (`src/core/base_fetcher.py`):
 
 ```python
 from src.core.base_fetcher import BaseFetcher
 
 class MyFetcher(BaseFetcher):
-    async def fetch(self):
-        data = await self.fetch_data()
-        validated_data = self.validate(data)
-        await self.save_to_db(validated_data)
+    async def fetch(self, ticker: str) -> Dict[str, Any]:
+        # Implement data fetching logic
+        pass
+
+    async def validate_structure(self) -> bool:
+        # Check if site structure matches expectations
+        pass
 ```
 
-### Data Validation (Pydantic)
+The `execute()` method wraps `fetch()` with logging, health updates, and error handling.
+
+### Rate Limiting
+
+Token bucket algorithm in `src/core/rate_limiter.py`:
 
 ```python
-from pydantic import BaseModel
+# Per-site rate limiting
+limiters = MultiRateLimiter()
+limiters.set_limit(site_id=1, calls_per_minute=20)
 
-class OHLCVSchema(BaseModel):
-    code: str
-    date: str
-    open: int
-    high: int
-    low: int
-    close: int
-    volume: int
+async with limiters.get(site_id):
+    await fetcher.execute(ticker)
 ```
 
-### Async Database Operations
+### Retry Decorators
+
+Three presets in `src/core/retry.py`:
 
 ```python
-import asyncpg
+from src.core.retry import quick_retry, standard_retry, persistent_retry
 
-async with asyncpg.create_pool(**db_config) as pool:
-    async with pool.acquire() as conn:
-        await conn.execute("INSERT INTO ...")
+@quick_retry        # 2 attempts, 0.5s delay
+@standard_retry     # 3 attempts, 1.0s delay, 2x backoff
+@persistent_retry   # 5 attempts, 2.0s delay, 2x backoff
+async def fetch_data():
+    pass
 ```
 
-### Reinforcement Learning (A2C)
+### Database Operations
+
+Global async database instance in `src/config/database.py`:
 
 ```python
-from src.learners.a2c_agent import A2CAgent
+from src.config.database import db
 
-agent = A2CAgent(state_dim=45, action_dim=3)
-agent.train(env, episodes=1000)
+await db.connect()
+rows = await db.fetch("SELECT * FROM stocks WHERE market = $1", "KOSPI")
+await db.execute("INSERT INTO daily_ohlcv ...")
+await db.disconnect()
 ```
+
+## Database Schema (13 Tables)
+
+**Master**: `stocks`, `stock_assets` (with auto-calculated P/L columns)
+
+**Price Data**: `daily_ohlcv`, `min_ticks`, `stock_prices_10min`, `stock_supply_demand`
+
+**Trading**: `trade_history` (includes `gemini_reasoning`), `stock_opinions`
+
+**AI Recommendations**: `data_sources` (reliability tracking), `recommendation_history`, `verification_results`
+
+**Scoring**: `stock_score_weights`, `stock_score_history`
+
+Key features:
+- `min_ticks` INSERT triggers auto-update of `stock_assets.current_price`
+- Generated columns for P/L calculations in `stock_assets`
+- Composite indexes on (stock_code, date) for time-series queries
 
 ## Environment Variables
 
-Create `.env` file with:
+Create `.env` file:
 
 ```bash
 # Database
@@ -249,58 +199,35 @@ DB_USER=wonny
 DB_HOST=localhost
 DB_PORT=5432
 
-# Korea Investment Securities API
+# Required APIs
+DART_API_KEY=your_dart_api_key
+
+# Trading (optional)
 KIS_APP_KEY=your_app_key
 KIS_APP_SECRET=your_app_secret
 KIS_ACCOUNT_NO=your_account_number
+KIS_CANO=your_cano
+KIS_ACNT_PRDT_CD=your_product_code
 
-# Gemini API
+# AI Analysis
 GEMINI_API_KEY=your_gemini_api_key
 
-# Monitoring
+# Monitoring (optional)
 SLACK_WEBHOOK_URL=your_slack_webhook
 ```
 
-## Key Documentation
+## Key Files Reference
 
-- [Opensource Integration Analysis](./docs/01-opensource-integration-analysis.md) - Detailed analysis of 4 opensource projects
-- [README.md](./README.md) - Project overview and quick start
-
-## Open Source References
-
-1. **quantylab/rltrader**: Reinforcement learning architecture
-   - https://github.com/quantylab/rltrader
-
-2. **Korea Investment Securities API**: Real-time trading
-   - https://github.com/koreainvestment/open-trading-api
-   - https://github.com/Soju06/python-kis
-
-3. **FinanceDataReader**: Data collection
-   - https://github.com/FinanceData/FinanceDataReader
-
-4. **FinGPT**: AI financial analysis
-   - https://github.com/AI4Finance-Foundation/FinGPT
-
-## Coding Standards
-
-- **Python Style**: PEP 8
-- **Docstrings**: Google style
-- **Type Hints**: Required for all functions
-- **Async/Await**: Use for all I/O operations
-- **Error Handling**: Try-except with logging
-- **Testing**: Pytest with 80%+ coverage
-
-## Development Workflow
-
-1. Read documentation in `docs/` folder
-2. Create feature branch from `main`
-3. Write tests first (TDD)
-4. Implement feature
-5. Run tests and linting
-6. Create pull request
+| File | Purpose |
+|------|---------|
+| `src/core/orchestrator.py` | Main data collection coordinator |
+| `src/core/base_fetcher.py` | Abstract base class for all fetchers |
+| `src/config/database.py` | AsyncPG connection manager |
+| `sql/01_create_tables.sql` | Complete database schema (13 tables) |
+| `src/gemini/client.py` | Google Gemini API wrapper |
+| `scripts/generate_comprehensive_holdings_report.py` | Main report generator |
 
 ---
 
-**Last Updated**: 2025-11-24 11:29:49
+**Last Updated**: 2025-11-27
 **Project Start**: 2025-11-24
-**Status**: Phase 1 - Data Collection Enhancement
