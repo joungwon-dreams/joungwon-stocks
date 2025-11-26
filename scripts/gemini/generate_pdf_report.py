@@ -1,6 +1,15 @@
 """
 Professional Stock Analysis PDF Report Generator
-Similar to securities firm reports with charts
+Based on 'Sample.pdf' style (Generative AI Equity Research)
+
+Report Structure (v1):
+1. Header / Investment Opinion / Key Metrics / Company Overview
+2. Investment Consensus / Analyst Targets / Recent 2-Week Trend
+3. Holding Status / Real-time Ticks
+4. Price Trend (120-day)
+5. Financial Performance / Investor Trends (30d & 1yr)
+6. Peer Comparison
+7. News
 """
 import asyncio
 import sys
