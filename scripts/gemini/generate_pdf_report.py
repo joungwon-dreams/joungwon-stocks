@@ -688,11 +688,13 @@ class PDFReportGenerator:
                 change_text = f"Change (2W): {change_rate:+.2f}%"
                 change_color = '#D32F2F' if change_rate > 0 else '#1976D2'
                 
-                story.append(Paragraph(f"<b>Recent 2-Week Trend: <font color='{change_color}'>{change_text}</font></b>", normal_style))
+                # Increased font size for Change (2W) text
+                story.append(Paragraph(f"<b>Recent 2-Week Trend: <font size='12' color='{change_color}'>{change_text}</font></b>", normal_style))
                 story.append(Spacer(1, 0.2*cm))
-                story.append(Image(str(self.chart_dir / 'mini_2week_chart.png'), width=14*cm, height=5*cm))
+                story.append(Image(str(self.chart_dir / 'mini_2week_chart.png'), width=14*cm, height=5.5*cm))
         
-        story.append(Spacer(1, 0.5*cm))
+        # Double the spacer
+        story.append(Spacer(1, 1.0*cm))
 
 
 
