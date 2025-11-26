@@ -329,35 +329,29 @@ class PDFReportGenerator:
             if price is None and prices: price = prices[-1] # Fallback to prev
             prices.append(float(price) if price else 0.0)
 
-        fig, ax = plt.subplots(figsize=(10, 5))
-        
-        # Plot Price on Twin Axis (Background)
-        ax2 = ax.twinx()
-        ax2.plot(dates, prices, color='gray', linewidth=1.5, alpha=0.4, linestyle='--', label='주가')
-        if prices and min(prices) > 0:
-            ax2.fill_between(dates, prices, min(prices)*0.98, color='gray', alpha=0.05)
-        ax2.set_ylabel('주가 (원)', fontsize=10, color='gray')
-        ax2.tick_params(axis='y', labelcolor='gray')
-        
-        # Plot Investor Trends
-        ax.plot(dates, foreign, marker='o', linewidth=2, label='외국인', color='#E64A19', markersize=4)
-        ax.plot(dates, institutional, marker='s', linewidth=2, label='기관', color='#512DA8', markersize=4)
-        ax.axhline(y=0, color='black', linestyle='-', linewidth=1, alpha=0.3)
-
-        ax.set_title('투자자별 순매수 추이 (30일)', fontsize=14, fontweight='bold')
-        ax.set_ylabel('순매수량 (천주)', fontsize=10)
-        
-        # Combine Legends
-        lines, labels = ax.get_legend_handles_labels()
-        lines2, labels2 = ax2.get_legend_handles_labels()
-        ax.legend(lines + lines2, labels + labels2, fontsize=10, loc='upper left')
-        
-        ax.grid(True, alpha=0.3, linestyle='--')
-        
+        # Subplots: 2 rows, share X axis
         import matplotlib.ticker as ticker
-        ax.xaxis.set_major_locator(ticker.MaxNLocator(6))
-        ax.tick_params(axis='x', labelsize=8, rotation=0)
-        ax2.yaxis.set_major_formatter(ticker.FuncFormatter(lambda x, p: format(int(x), ',')))
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 6), sharex=True, height_ratios=[1, 1])
+        
+        # Top: Price Chart
+        ax1.plot(dates, prices, color='#455A64', linewidth=2, label='주가')
+        ax1.set_ylabel('주가 (원)', fontsize=9)
+        ax1.legend(loc='upper left', fontsize=9)
+        ax1.grid(True, alpha=0.3, linestyle='--')
+        ax1.yaxis.set_major_formatter(ticker.FuncFormatter(lambda x, p: format(int(x), ',')))
+        
+        # Bottom: Investor Trends
+        ax2.plot(dates, foreign, marker='o', linewidth=2, label='외국인', color='#E64A19', markersize=4)
+        ax2.plot(dates, institutional, marker='s', linewidth=2, label='기관', color='#512DA8', markersize=4)
+        ax2.axhline(y=0, color='black', linestyle='-', linewidth=1, alpha=0.3)
+        ax2.set_ylabel('순매수량 (천주)', fontsize=9)
+        ax2.legend(loc='upper left', fontsize=9)
+        ax2.grid(True, alpha=0.3, linestyle='--')
+
+        ax1.set_title('주가 및 투자자별 순매수 추이 (30일)', fontsize=14, fontweight='bold')
+        
+        ax2.xaxis.set_major_locator(ticker.MaxNLocator(6))
+        ax2.tick_params(axis='x', labelsize=8, rotation=0)
 
         plt.tight_layout()
         plt.savefig(self.chart_dir / 'investor_trends.png', dpi=100, bbox_inches='tight')
@@ -382,36 +376,30 @@ class PDFReportGenerator:
             if price is None and prices: price = prices[-1]
             prices.append(float(price) if price else 0.0)
 
-        fig, ax = plt.subplots(figsize=(10, 5))
-        
-        # Plot Price on Twin Axis (Background)
-        ax2 = ax.twinx()
-        ax2.plot(dates, prices, color='gray', linewidth=1.5, alpha=0.4, linestyle='--', label='주가')
-        if prices and min(prices) > 0:
-            ax2.fill_between(dates, prices, min(prices)*0.95, color='gray', alpha=0.05)
-        ax2.set_ylabel('주가 (원)', fontsize=10, color='gray')
-        ax2.tick_params(axis='y', labelcolor='gray')
-        
-        # Plot Cumulative Trends
-        ax.plot(dates, foreign_cum, linewidth=2, label='외국인 누적', color='#E64A19')
-        ax.plot(dates, institutional_cum, linewidth=2, label='기관 누적', color='#512DA8')
-        # ax.plot(dates, individual_cum, linewidth=1, label='개인 누적', color='#388E3C', alpha=0.6, linestyle='--') 
-
-        ax.set_title('투자자별 누적 순매수 추이 (1년)', fontsize=14, fontweight='bold')
-        ax.set_ylabel('누적 순매수량 (천주)', fontsize=10)
-        
-        # Combine Legends
-        lines, labels = ax.get_legend_handles_labels()
-        lines2, labels2 = ax2.get_legend_handles_labels()
-        ax.legend(lines + lines2, labels + labels2, fontsize=10, loc='upper left')
-        
-        ax.grid(True, alpha=0.3, linestyle='--')
-        
+        # Subplots
         import matplotlib.ticker as ticker
-        ax.xaxis.set_major_locator(ticker.MaxNLocator(8))
-        ax.yaxis.set_major_formatter(ticker.FuncFormatter(lambda x, p: format(int(x), ',')))
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 6), sharex=True, height_ratios=[1, 1])
+        
+        # Top: Price
+        ax1.plot(dates, prices, color='#455A64', linewidth=2, label='주가')
+        ax1.set_ylabel('주가 (원)', fontsize=9)
+        ax1.legend(loc='upper left', fontsize=9)
+        ax1.grid(True, alpha=0.3, linestyle='--')
+        ax1.yaxis.set_major_formatter(ticker.FuncFormatter(lambda x, p: format(int(x), ',')))
+        
+        # Bottom: Cumulative Trends
+        ax2.plot(dates, foreign_cum, linewidth=2, label='외국인 누적', color='#E64A19')
+        ax2.plot(dates, institutional_cum, linewidth=2, label='기관 누적', color='#512DA8')
+        # ax2.plot(dates, individual_cum, linewidth=1, label='개인 누적', color='#388E3C', alpha=0.6, linestyle='--') 
+
+        ax1.set_title('주가 및 투자자별 누적 순매수 추이 (1년)', fontsize=14, fontweight='bold')
+        ax2.set_ylabel('누적 순매수량 (천주)', fontsize=9)
+        ax2.legend(loc='upper left', fontsize=9)
+        ax2.grid(True, alpha=0.3, linestyle='--')
+        
+        ax2.xaxis.set_major_locator(ticker.MaxNLocator(8))
         ax2.yaxis.set_major_formatter(ticker.FuncFormatter(lambda x, p: format(int(x), ',')))
-        ax.tick_params(axis='x', labelsize=8, rotation=0)
+        ax2.tick_params(axis='x', labelsize=8, rotation=0)
 
         plt.tight_layout()
         plt.savefig(self.chart_dir / 'investor_trends_year.png', dpi=100, bbox_inches='tight')
@@ -684,27 +672,9 @@ class PDFReportGenerator:
         story.append(Paragraph(summary_text, normal_style))
         story.append(Spacer(1, 0.3*cm))
 
-
-
-        # 2-Week Price Trend Mini Section
-        if (self.chart_dir / 'mini_2week_chart.png').exists():
-            # Calculate change
-            if len(self.ohlcv) >= 14:
-                price_2w_ago = self.ohlcv[13]['close']
-                current_p = self.ohlcv[0]['close']
-                change_rate = ((current_p - price_2w_ago) / price_2w_ago) * 100
-                change_text = f"Change (2W): {change_rate:+.2f}%"
-                change_color = '#D32F2F' if change_rate > 0 else '#1976D2'
-                
-                story.append(Paragraph(f"<b>Recent 2-Week Trend: <font color='{change_color}'>{change_text}</font></b>", normal_style))
-                story.append(Spacer(1, 0.2*cm))
-                story.append(Image(str(self.chart_dir / 'mini_2week_chart.png'), width=14*cm, height=5*cm))
-        
-        story.append(Spacer(1, 0.5*cm))
-
-        # --- Investment Consensus (Moved again) ---
+        # --- Investment Consensus (Moved to Page 2) ---
         # 기준 날짜 (YY.MM.DD)
-        print("DEBUG: Generating Investment Consensus Section (Moved after 2-Week Chart)...")
+        print("DEBUG: Generating Investment Consensus Section (Page 2)...")
         today_str = datetime.now().strftime("%y.%m.%d")
         story.append(Paragraph(f"투자의견 컨센서스 <font size=10 color='#777'>(기준:{today_str})</font>", heading_style))
 
@@ -717,7 +687,7 @@ class PDFReportGenerator:
 
         story.append(Spacer(1, 0.5*cm))
 
-        # --- Analyst Targets Table (Moved again) ---
+        # --- Analyst Targets Table (Moved to Page 2) ---
         if self.analyst_targets:
             story.append(Paragraph("증권사 목표가", heading_style))
             target_data = [['일자', '목표주가', '이전대비', '투자의견', '증권사', '리포트']]
@@ -806,6 +776,28 @@ class PDFReportGenerator:
 
             story.append(target_table)
             story.append(Spacer(1, 1*cm))
+
+        # 2-Week Price Trend Mini Section
+
+
+
+        # 2-Week Price Trend Mini Section
+        if (self.chart_dir / 'mini_2week_chart.png').exists():
+            # Calculate change
+            if len(self.ohlcv) >= 14:
+                price_2w_ago = self.ohlcv[13]['close']
+                current_p = self.ohlcv[0]['close']
+                change_rate = ((current_p - price_2w_ago) / price_2w_ago) * 100
+                change_text = f"Change (2W): {change_rate:+.2f}%"
+                change_color = '#D32F2F' if change_rate > 0 else '#1976D2'
+                
+                story.append(Paragraph(f"<b>Recent 2-Week Trend: <font color='{change_color}'>{change_text}</font></b>", normal_style))
+                story.append(Spacer(1, 0.2*cm))
+                story.append(Image(str(self.chart_dir / 'mini_2week_chart.png'), width=14*cm, height=5*cm))
+        
+        story.append(Spacer(1, 0.5*cm))
+
+
 
         # Holding Status (New Section)
         if hasattr(self, 'holding') and self.holding:
