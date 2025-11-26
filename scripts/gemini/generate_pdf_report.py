@@ -684,6 +684,113 @@ class PDFReportGenerator:
         story.append(Paragraph(summary_text, normal_style))
         story.append(Spacer(1, 0.3*cm))
 
+        # --- Investment Consensus (Moved) ---
+        # 기준 날짜 (YY.MM.DD)
+        print("DEBUG: Generating Investment Consensus Section (Moved)...")
+        today_str = datetime.now().strftime("%y.%m.%d")
+        story.append(Paragraph(f"투자의견 컨센서스 <font size=10 color='#777'>(기준:{today_str})</font>", heading_style))
+
+        if self.consensus:
+            consensus_elements = create_consensus_detail_section(self.consensus)
+            story.extend(consensus_elements)
+            story.append(Paragraph("* 자료출처: www.wisereport.co.kr", ParagraphStyle('source', fontName='AppleGothic', fontSize=8, textColor=colors.grey)))
+        else:
+            story.append(Paragraph("컨센서스 데이터 없음", normal_style))
+
+        story.append(Spacer(1, 0.5*cm))
+
+        # --- Analyst Targets Table (Moved) ---
+        if self.analyst_targets:
+            story.append(Paragraph("증권사 목표가", heading_style))
+            target_data = [['일자', '목표주가', '이전대비', '투자의견', '증권사', '리포트']]
+            
+            for idx, target in enumerate(self.analyst_targets):
+                d_str = target['report_date']
+                if len(d_str) == 8:
+                    date_fmt = f"{d_str[2:4]}.{d_str[4:6]}.{d_str[6:8]}"
+                else:
+                    date_fmt = d_str
+
+                opinion_map = {'Buy': '매수', 'Hold': '중립', 'Sell': '매도', 'buy': '매수', 'hold': '중립', 'sell': '매도'}
+                opinion_kr = opinion_map.get(target.get('opinion', 'Buy'), '매수')
+
+                title = target.get('title', '')
+                if len(title) > 25:
+                    title = title[:25] + '...'
+
+                current_price = target['target_price']
+                price_change_str = '0'
+
+                if idx + 1 < len(self.analyst_targets):
+                    next_target = self.analyst_targets[idx + 1]
+                    next_price = next_target['target_price']
+                    price_diff = current_price - next_price
+
+                    if price_diff > 0:
+                        price_change_str = f"▲ {price_diff:,}"
+                    elif price_diff < 0:
+                        price_change_str = f"▼ {abs(price_diff):,}"
+                    else:
+                        price_change_str = "0"
+                else:
+                    price_change_str = "-"
+
+                op_bar = create_mini_opinion_bar(opinion_kr)
+                op_color = colors.HexColor('#F44336')
+                if '매수' in opinion_kr: op_color = colors.HexColor('#F44336')
+                elif '매도' in opinion_kr: op_color = colors.HexColor('#1565C0')
+                elif '중립' in opinion_kr: op_color = colors.HexColor('#4CAF50')
+                
+                op_cell_data = [[op_bar, Paragraph(f"<font color='white'><b>{opinion_kr}</b></font>", ParagraphStyle('op', fontName='AppleGothic', fontSize=8, alignment=1))]]
+                op_cell = Table(op_cell_data, colWidths=[2.2*cm, 1.0*cm])
+                op_cell.setStyle(TableStyle([
+                    ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                    ('BACKGROUND', (1, 0), (1, 0), op_color),
+                    ('LEFTPADDING', (0, 0), (-1, -1), 1),
+                    ('RIGHTPADDING', (0, 0), (-1, -1), 1),
+                    ('TOPPADDING', (0, 0), (-1, -1), 1),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
+                ]))
+
+                target_data.append([
+                    date_fmt,
+                    f"{target['target_price']:,}",
+                    price_change_str,
+                    op_cell,
+                    target['brokerage'],
+                    title
+                ])
+            
+            target_table = Table(target_data, colWidths=[2.0*cm, 2.0*cm, 1.5*cm, 3.5*cm, 1.5*cm, 6.0*cm])
+            target_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f8f9fa')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('FONTNAME', (0, 0), (-1, -1), 'AppleGothic'),
+                ('FONTSIZE', (0, 0), (-1, 0), 9),
+                ('FONTSIZE', (0, 1), (-1, -1), 8),
+                ('TOPPADDING', (0, 0), (-1, -1), 6),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e0e0e0')),
+                ('LINEBELOW', (0, 0), (-1, 0), 1, colors.black),
+            ]))
+            
+            for r_idx, row in enumerate(target_data[1:], 1):
+                change_str = row[2]
+                if '▲' in change_str:
+                    target_table.setStyle(TableStyle([('TEXTCOLOR', (2, r_idx), (2, r_idx), colors.red)]))
+                elif '▼' in change_str:
+                    target_table.setStyle(TableStyle([('TEXTCOLOR', (2, r_idx), (2, r_idx), colors.blue)]))
+                else:
+                    target_table.setStyle(TableStyle([('TEXTCOLOR', (2, r_idx), (2, r_idx), colors.black)]))
+
+            story.append(target_table)
+            story.append(Spacer(1, 1*cm))
+        
+        story.append(PageBreak())
+
         # 2-Week Price Trend Mini Section
         if (self.chart_dir / 'mini_2week_chart.png').exists():
             # Calculate change
@@ -937,129 +1044,13 @@ class PDFReportGenerator:
 
         story.append(Spacer(1, 0.5*cm))
 
-        # PageBreak before Consensus/Targets
-        story.append(PageBreak())
 
-        # Investment Consensus (투자의견 컨센서스)
-        # 기준 날짜 (YY.MM.DD)
-        print("DEBUG: Generating Investment Consensus Section...")
-        today_str = datetime.now().strftime("%y.%m.%d")
-        story.append(Paragraph(f"투자의견 컨센서스 <font size=10 color='#777'>(기준:{today_str})</font>", heading_style))
 
-        if self.consensus:
-            print("DEBUG: Adding Consensus Detail Table...")
-            # Use new visual component
-            consensus_elements = create_consensus_detail_section(self.consensus)
-            story.extend(consensus_elements)
-            
-            story.append(Paragraph("* 자료출처: www.wisereport.co.kr", ParagraphStyle('source', fontName='AppleGothic', fontSize=8, textColor=colors.grey)))
-        else:
-            story.append(Paragraph("컨센서스 데이터 없음", normal_style))
 
-        story.append(Spacer(1, 0.5*cm))
 
-        # Analyst Targets Table
-        if self.analyst_targets:
-            story.append(Paragraph("증권사 목표가", heading_style))
-            # Columns: Date, Target, Change, Opinion, Broker, Title
-            target_data = [['일자', '목표주가', '이전대비', '투자의견', '증권사', '리포트']]
-            
-            for idx, target in enumerate(self.analyst_targets):
-                # Date format: YYYYMMDD -> YY.MM.DD
-                d_str = target['report_date']
-                if len(d_str) == 8:
-                    date_fmt = f"{d_str[2:4]}.{d_str[4:6]}.{d_str[6:8]}"
-                else:
-                    date_fmt = d_str
 
-                # Opinion translation
-                opinion_map = {'Buy': '매수', 'Hold': '중립', 'Sell': '매도', 'buy': '매수', 'hold': '중립', 'sell': '매도'}
-                opinion_kr = opinion_map.get(target.get('opinion', 'Buy'), '매수')
 
-                # Report Title (truncate to 30 chars like Daum)
-                title = target.get('title', '')
-                if len(title) > 25:
-                    title = title[:25] + '...'
 
-                # Price Change: Compare with next item (since sorted DESC by date, next is older)
-                current_price = target['target_price']
-                price_change_str = '0'
-
-                if idx + 1 < len(self.analyst_targets):
-                    next_target = self.analyst_targets[idx + 1]
-                    next_price = next_target['target_price']
-                    price_diff = current_price - next_price
-
-                    if price_diff > 0:
-                        price_change_str = f"▲ {price_diff:,}"
-                    elif price_diff < 0:
-                        price_change_str = f"▼ {abs(price_diff):,}"
-                    else:
-                        price_change_str = "0"
-                else:
-                    # Last (oldest) item: no previous data
-                    price_change_str = "-"
-
-                # Opinion Visual: [Gauge] [Text Box]
-                op_bar = create_mini_opinion_bar(opinion_kr)
-                
-                # Opinion Text Color Box
-                op_color = colors.HexColor('#F44336') # Red default
-                if '매수' in opinion_kr: op_color = colors.HexColor('#F44336')
-                elif '매도' in opinion_kr: op_color = colors.HexColor('#1565C0')
-                elif '중립' in opinion_kr: op_color = colors.HexColor('#4CAF50')
-                
-                # Small table for Opinion cell
-                op_cell_data = [[op_bar, Paragraph(f"<font color='white'><b>{opinion_kr}</b></font>", ParagraphStyle('op', fontName='AppleGothic', fontSize=8, alignment=1))]]
-                op_cell = Table(op_cell_data, colWidths=[2.2*cm, 1.0*cm])
-                op_cell.setStyle(TableStyle([
-                    ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                    ('BACKGROUND', (1, 0), (1, 0), op_color),
-                    ('LEFTPADDING', (0, 0), (-1, -1), 1),
-                    ('RIGHTPADDING', (0, 0), (-1, -1), 1),
-                    ('TOPPADDING', (0, 0), (-1, -1), 1),
-                    ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
-                ]))
-
-                target_data.append([
-                    date_fmt,
-                    f"{target['target_price']:,}",
-                    price_change_str,
-                    op_cell,
-                    target['brokerage'],
-                    title
-                ])
-            
-            # Adjust column widths to fit A4 (Total ~16cm)
-            # Date(2.0), Target(2.0), Change(1.5), Opinion(3.5), Broker(1.5), Title(6.0)
-            target_table = Table(target_data, colWidths=[2.0*cm, 2.0*cm, 1.5*cm, 3.5*cm, 1.5*cm, 6.0*cm])
-            target_table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f8f9fa')), # Header light gray like Daum
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-                ('FONTNAME', (0, 0), (-1, -1), 'AppleGothic'),
-                ('FONTSIZE', (0, 0), (-1, 0), 9),
-                ('FONTSIZE', (0, 1), (-1, -1), 8),
-                ('TOPPADDING', (0, 0), (-1, -1), 6),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e0e0e0')), # Light grid
-                ('LINEBELOW', (0, 0), (-1, 0), 1, colors.black), # Header underline
-                # Dynamic color handled below
-            ]))
-            # Dynamic color for Change column
-            for r_idx, row in enumerate(target_data[1:], 1):
-                change_str = row[2]
-                if '▲' in change_str:
-                    target_table.setStyle(TableStyle([('TEXTCOLOR', (2, r_idx), (2, r_idx), colors.red)]))
-                elif '▼' in change_str:
-                    target_table.setStyle(TableStyle([('TEXTCOLOR', (2, r_idx), (2, r_idx), colors.blue)]))
-                else:
-                    target_table.setStyle(TableStyle([('TEXTCOLOR', (2, r_idx), (2, r_idx), colors.black)]))
-
-            story.append(target_table)
-            story.append(Spacer(1, 1*cm))
 
         # Footer
         footer_text = f"본 리포트는 AI 기반 자동 생성 리포트입니다. | 생성일시: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
