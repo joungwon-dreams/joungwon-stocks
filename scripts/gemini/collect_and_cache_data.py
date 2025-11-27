@@ -175,19 +175,29 @@ async def cache_investor_trends(stock_code: str, daum_supply: DaumSupplyFetcher,
 
 
 async def cache_ohlcv_to_db(stock_code: str, daum_price: DaumPriceFetcher, days: int = 365):
-    """Cache OHLCV history to daily_ohlcv table (if not already exists)"""
+    """Cache OHLCV history to daily_ohlcv table (smart update)"""
     print(f"   📉 Checking OHLCV history for {stock_code}...")
 
-    # Check existing data count
-    count_query = 'SELECT COUNT(*) FROM daily_ohlcv WHERE stock_code = $1'
-    existing_count = await db.fetchval(count_query, stock_code)
+    # Check latest date
+    latest_date_query = 'SELECT MAX(date) FROM daily_ohlcv WHERE stock_code = $1'
+    latest_date = await db.fetchval(latest_date_query, stock_code)
+    
+    today = datetime.now().date()
+    fetch_days = days
+    
+    if latest_date:
+        days_diff = (today - latest_date).days
+        if days_diff < 2:
+            # Data is fresh (today or yesterday), just quick update
+            fetch_days = 10
+            print(f"   ✅ Data is fresh (Latest: {latest_date}). Performing quick update ({fetch_days} days).")
+        else:
+            print(f"   ⚠️ Data is old (Latest: {latest_date}). Fetching full history ({days} days).")
+    else:
+        print(f"   ⚠️ No data found. Fetching full history ({days} days).")
 
-    if existing_count >= 200:
-        print(f"   ✅ OHLCV already cached ({existing_count} days)")
-        return
-
-    print(f"   📥 Fetching {days} days OHLCV from Daum...")
-    history = await daum_price.fetch_history(stock_code, days)
+    print(f"   📥 Fetching {fetch_days} days OHLCV from Daum...")
+    history = await daum_price.fetch_history(stock_code, fetch_days)
 
     if not history:
         print(f"   ⚠️ No OHLCV data available")

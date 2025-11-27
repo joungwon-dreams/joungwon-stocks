@@ -192,6 +192,22 @@ async def main():
     # 1. Collect Data
     data = await collect_all_data(stock_code, stock_name)
     
+    # Save Raw Data to File
+    import json
+    from datetime import date
+    raw_data_path = Path('/Users/wonny/Dev/joungwon.stocks/docs/features/paradise_raw_data.json')
+    raw_data_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    def json_serial(obj):
+        if isinstance(obj, (datetime, date)):
+            return obj.isoformat()
+        raise TypeError (f"Type {type(obj)} not serializable")
+
+    with open(raw_data_path, 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=4, ensure_ascii=False, default=json_serial)
+        
+    print(f"💾 Raw data saved to: {raw_data_path}")
+    
     # 2. Analyze
     analysis_text = await analyze_with_ai(stock_name, stock_code, data)
     print("\n--- AI Analysis Result ---")

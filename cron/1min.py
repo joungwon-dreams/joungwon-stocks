@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
-1-Minute Real-time Stock Data Collector
+1-Minute Real-time Stock Data Collector + Dashboard PDF Generator
 Fetches current price, volume, bid/ask data for all holdings
 Runs every minute via cron during trading hours (08:50-16:00 KST)
 
 네이버 금융 웹 스크래핑을 통해 실시간 현재가, 등락률, 거래량, 호가 정보 수집
++ 수집 후 realtime_dashboard.pdf 자동 생성
 """
 import asyncio
 import sys
@@ -14,6 +15,13 @@ import asyncpg
 
 # Add project root to path
 sys.path.insert(0, '/Users/wonny/Dev/joungwon.stocks')
+
+# Dashboard PDF 생성 모듈 임포트
+from scripts.generate_realtime_dashboard_terminal_style import (
+    get_all_holdings,
+    get_stock_detail_data,
+    create_pdf
+)
 
 # Direct database connection (settings 의존성 제거)
 DB_CONFIG = {
@@ -238,6 +246,10 @@ class RealtimeDataCollector:
             print(f"✅ 수집 완료: 성공 {success_count}건, 실패 {fail_count}건")
             print(f"{'='*60}\n")
 
+            # 데이터 수집 성공 시 대시보드 PDF 생성
+            if success_count > 0:
+                await self.generate_dashboard_pdf()
+
         except Exception as e:
             print(f"❌ 전체 수집 오류: {e}")
             import traceback
@@ -246,6 +258,52 @@ class RealtimeDataCollector:
         finally:
             # 데이터베이스 연결 해제
             await conn.close()
+
+    async def generate_dashboard_pdf(self):
+        """실시간 대시보드 PDF 생성"""
+        try:
+            print(f"\n📊 대시보드 PDF 생성 중...")
+
+            # 출력 디렉토리
+            output_dir = Path('/Users/wonny/Dev/joungwon.stocks/reports')
+            output_dir.mkdir(exist_ok=True)
+
+            # 보유 종목 목록 조회
+            holdings = await get_all_holdings()
+
+            if not holdings:
+                print("   ⚠️  보유 종목이 없습니다.")
+                return
+
+            # 각 종목별 상세 데이터 수집
+            # create_pdf는 (stock_code, stock_name, data) 튜플 리스트를 기대
+            all_data = []
+            for row in holdings:
+                stock_code = row['stock_code']
+                stock_name = row['stock_name']
+                try:
+                    data = await get_stock_detail_data(stock_code, stock_name)
+                    if data:
+                        # (stock_code, stock_name, data) 튜플로 변환
+                        all_data.append((stock_code, stock_name, data))
+                except Exception as e:
+                    print(f"   ⚠️  {stock_name} 데이터 조회 실패: {e}")
+                    continue
+
+            if not all_data:
+                print("   ⚠️  수집된 데이터가 없습니다.")
+                return
+
+            # PDF 생성
+            output_path = output_dir / 'realtime_dashboard.pdf'
+            create_pdf(all_data, str(output_path))
+
+            print(f"   ✅ 대시보드 PDF 생성 완료: {output_path}")
+
+        except Exception as e:
+            print(f"   ❌ 대시보드 PDF 생성 오류: {e}")
+            import traceback
+            traceback.print_exc()
 
 
 async def main():

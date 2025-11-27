@@ -8,9 +8,9 @@ class DaumReportsFetcher:
     
     def __init__(self):
         self.headers = {
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Referer': 'https://finance.daum.net/research/company',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Accept': 'application/json, text/javascript, */*; q=0.01',
+            'Host': 'finance.daum.net',
             'X-Requested-With': 'XMLHttpRequest'
         }
 
@@ -25,6 +25,9 @@ class DaumReportsFetcher:
             'page': 1,
             'perPage': 10
         }
+        
+        # Update referer dynamically to look legitimate
+        self.headers['Referer'] = f"https://finance.daum.net/quotes/{symbol_code}"
         
         reports = []
         try:
@@ -43,7 +46,7 @@ class DaumReportsFetcher:
                                 'url': f"https://finance.daum.net/research/company/{item.get('id')}" # Construct URL
                             })
                     else:
-                        print(f"Daum Reports API Error: {resp.status}")
+                        print(f"Daum Reports API Error: {resp.status} (Referer: {self.headers['Referer']})")
         except Exception as e:
             print(f"Error fetching Daum reports: {e}")
             
