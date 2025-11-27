@@ -76,3 +76,4 @@ tmp/
 *_token.json
 *_secret.json
 config/secrets.yaml
+backups/*.dump
