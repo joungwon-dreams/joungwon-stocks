@@ -405,25 +405,26 @@ class PDFReportGenerator:
         foreign = [row['foreign']/1000 for row in reversed(data_30)]
         institutional = [row['institutional']/1000 for row in reversed(data_30)]
 
-        # Prepare Price Data
-        prices = []
-        for d in dates:
-            # Find matching price in self.ohlcv
-            price = next((row['close'] for row in self.ohlcv if row['date'] == d), None)
-            if price is None and prices: price = prices[-1] # Fallback to prev
-            prices.append(float(price) if price else 0.0)
+        # Prepare Price Data - 30일 OHLCV 데이터 사용
+        ohlcv_30 = self.ohlcv[:30] if self.ohlcv else []
+        price_dates = [row['date'] for row in reversed(ohlcv_30)]
+        prices = [float(row['close']) for row in reversed(ohlcv_30)]
 
         # Subplots: 2 rows, share X axis
         import matplotlib.ticker as ticker
-        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 6), sharex=True, height_ratios=[1, 1])
-        
-        # Top: Price Chart
-        ax1.plot(dates, prices, color='#455A64', linewidth=2, label='주가')
-        ax1.set_ylabel('주가 (원)', fontsize=9)
-        ax1.legend(loc='upper left', fontsize=9)
-        ax1.grid(True, alpha=0.3, linestyle='--')
-        ax1.yaxis.set_major_formatter(ticker.FuncFormatter(lambda x, p: format(int(x), ',')))
-        
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 6), sharex=False, height_ratios=[1, 1])
+
+        # Top: Price Chart (30일 주가 차트)
+        if prices:
+            ax1.plot(price_dates, prices, color='#455A64', linewidth=2, label='주가')
+            ax1.set_ylabel('주가 (원)', fontsize=9)
+            ax1.legend(loc='upper left', fontsize=9)
+            ax1.grid(True, alpha=0.3, linestyle='--')
+            ax1.yaxis.set_major_formatter(ticker.FuncFormatter(lambda x, p: format(int(x), ',')))
+            ax1.xaxis.set_major_locator(ticker.MaxNLocator(6))
+            ax1.tick_params(axis='x', labelsize=8, rotation=0)
+            ax1.set_title('주가 추이 (30일)', fontsize=12, fontweight='bold')
+
         # Bottom: Investor Trends
         ax2.plot(dates, foreign, marker='o', linewidth=2, label='외국인', color='#E64A19', markersize=4)
         ax2.plot(dates, institutional, marker='s', linewidth=2, label='기관', color='#512DA8', markersize=4)
@@ -431,9 +432,8 @@ class PDFReportGenerator:
         ax2.set_ylabel('순매수량 (천주)', fontsize=9)
         ax2.legend(loc='upper left', fontsize=9)
         ax2.grid(True, alpha=0.3, linestyle='--')
+        ax2.set_title('투자자별 순매수 추이 (30일)', fontsize=12, fontweight='bold')
 
-        ax1.set_title('주가 및 투자자별 순매수 추이 (30일)', fontsize=14, fontweight='bold')
-        
         ax2.xaxis.set_major_locator(ticker.MaxNLocator(6))
         ax2.tick_params(axis='x', labelsize=8, rotation=0)
 
@@ -453,34 +453,37 @@ class PDFReportGenerator:
         institutional_cum = np.cumsum([row['institutional']/1000 for row in data])
         # individual_cum = np.cumsum([row['individual']/1000 for row in data])
 
-        # Prepare Price Data
-        prices = []
-        for d in dates:
-            price = next((row['close'] for row in self.ohlcv if row['date'] == d), None)
-            if price is None and prices: price = prices[-1]
-            prices.append(float(price) if price else 0.0)
+        # Prepare Price Data - 1년 (365일) OHLCV 데이터 사용
+        ohlcv_year = self.ohlcv[:365] if self.ohlcv else []  # 최신 365일
+        price_dates = [row['date'] for row in reversed(ohlcv_year)]
+        prices = [float(row['close']) for row in reversed(ohlcv_year)]
 
         # Subplots
         import matplotlib.ticker as ticker
-        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 6), sharex=True, height_ratios=[1, 1])
-        
-        # Top: Price
-        ax1.plot(dates, prices, color='#455A64', linewidth=2, label='주가')
-        ax1.set_ylabel('주가 (원)', fontsize=9)
-        ax1.legend(loc='upper left', fontsize=9)
-        ax1.grid(True, alpha=0.3, linestyle='--')
-        ax1.yaxis.set_major_formatter(ticker.FuncFormatter(lambda x, p: format(int(x), ',')))
-        
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 6), sharex=False, height_ratios=[1, 1])
+
+        # Top: Price Chart (1년 주가 차트)
+        if prices:
+            ax1.plot(price_dates, prices, color='#455A64', linewidth=2, label='주가')
+            ax1.fill_between(price_dates, prices, alpha=0.1, color='#455A64')
+            ax1.set_title('주가 추이 (1년)', fontsize=12, fontweight='bold')
+            ax1.set_ylabel('주가 (원)', fontsize=9)
+            ax1.legend(loc='upper left', fontsize=9)
+            ax1.grid(True, alpha=0.3, linestyle='--')
+            ax1.yaxis.set_major_formatter(ticker.FuncFormatter(lambda x, p: format(int(x), ',')))
+            ax1.xaxis.set_major_locator(ticker.MaxNLocator(8))
+            ax1.tick_params(axis='x', labelsize=8, rotation=0)
+
         # Bottom: Cumulative Trends
         ax2.plot(dates, foreign_cum, linewidth=2, label='외국인 누적', color='#E64A19')
         ax2.plot(dates, institutional_cum, linewidth=2, label='기관 누적', color='#512DA8')
-        # ax2.plot(dates, individual_cum, linewidth=1, label='개인 누적', color='#388E3C', alpha=0.6, linestyle='--') 
+        # ax2.plot(dates, individual_cum, linewidth=1, label='개인 누적', color='#388E3C', alpha=0.6, linestyle='--')
 
-        ax1.set_title('주가 및 투자자별 누적 순매수 추이 (1년)', fontsize=14, fontweight='bold')
+        ax2.set_title('투자자별 누적 순매수 추이 (1년)', fontsize=12, fontweight='bold')
         ax2.set_ylabel('누적 순매수량 (천주)', fontsize=9)
         ax2.legend(loc='upper left', fontsize=9)
         ax2.grid(True, alpha=0.3, linestyle='--')
-        
+
         ax2.xaxis.set_major_locator(ticker.MaxNLocator(8))
         ax2.yaxis.set_major_formatter(ticker.FuncFormatter(lambda x, p: format(int(x), ',')))
         ax2.tick_params(axis='x', labelsize=8, rotation=0)
