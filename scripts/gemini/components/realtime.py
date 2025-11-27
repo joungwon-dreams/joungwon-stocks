@@ -229,45 +229,108 @@ def create_stock_realtime_dashboard(stock_info, holding_info, min_ticks_data):
     elements.append(summary_table_top)
     elements.append(Spacer(1, 0.5*cm))
 
-    # --- Min Ticks Detail Table ---
-    detail_headers = ['시간', '현재가', '거래량', '직전', '변동률', '전일', '전일률', '평단가', '평가율']
+    # --- Min Ticks Detail Table (realtime_dashboard.pdf 형식과 동일) ---
+    # 컬럼 순서: 시간 → 거래량 → 현재가 → 직전 → 변동률 → 전일 → 전일률 → 평단가 → 평가율
+    detail_headers = ['시간', '거래량', '현재가', '직전', '변동률', '전일', '전일률', '평단가', '평가율']
     detail_table_data = [detail_headers]
 
     # Styles
     cell_style_center = ParagraphStyle('cell_center', fontName='AppleGothic', fontSize=9, alignment=TA_CENTER)
-    # Reduced font size for Rate columns (requested)
     cell_style_small = ParagraphStyle('cell_small', fontName='AppleGothic', fontSize=7, alignment=TA_CENTER)
 
+    # 전일 종가 계산 (첫 번째 틱의 가격에서 change_rate 역산)
+    first_tick = data_subset[-1] if data_subset else None
+    prev_close = 0
+    if first_tick:
+        first_price = int(first_tick['price'])
+        first_rate = float(first_tick.get('change_rate', 0.0))
+        if first_rate != 0:
+            prev_close = int(first_price / (1 + first_rate / 100))
+        else:
+            prev_close = first_price
+
     for tick in data_subset:
-        # Use raw timestamp (assuming KST)
         ts = tick['timestamp']
         시간 = ts.strftime('%H:%M')
-        
+
         현재가 = int(tick['price'])
         거래량 = int(tick['volume'])
-        직전 = 0
-        변동률 = float(tick.get('change_rate', 0.0))
-        전일 = 현재가
-        전일률 = 0.0
-        평단가_val = 현재가 - 평단가
-        평가율_val = (평단가_val / 평단가 * 100) if 평단가 > 0 else 0
+        prev_price = int(tick['prev_price']) if tick.get('prev_price') else 현재가
+        prev_volume = int(tick['prev_volume']) if tick.get('prev_volume') else 거래량
 
-        c_price = 'red' if 변동률 >= 0 else 'blue'
-        c_avg = 'red' if 평단가_val >= 0 else 'blue'
-        c_rate = 'red' if 평가율_val >= 0 else 'blue'
+        # 직전 대비 (가격)
+        직전_diff = 현재가 - prev_price
+        if 직전_diff > 0:
+            직전_str = f"+{직전_diff:,}"
+            c_직전 = 'red'
+        elif 직전_diff < 0:
+            직전_str = f"{직전_diff:,}"
+            c_직전 = 'blue'
+        else:
+            직전_str = "0"
+            c_직전 = 'black'
 
-        p_현재가 = Paragraph(f"<font color='{c_price}'>{현재가:,}</font>", cell_style_center)
-        p_변동률 = Paragraph(f"<font color='{c_price}'>{변동률:+.2f}%</font>", cell_style_center)
-        p_전일 = Paragraph(f"<font color='{c_price}'>{전일:,}</font>", cell_style_center)
-        p_전일률 = Paragraph(f"<font color='{c_price}'>{전일률:+.2f}%</font>", cell_style_center)
-        p_평단가 = Paragraph(f"<font color='{c_avg}'>{평단가_val:+,}</font>", cell_style_center)
-        p_평가율 = Paragraph(f"<font color='{c_rate}'>{평가율_val:+.2f}%</font>", cell_style_small) # Small font
+        # 변동률 (직전 대비)
+        if prev_price > 0:
+            변동률 = ((현재가 - prev_price) / prev_price) * 100
+        else:
+            변동률 = 0.0
+        c_변동률 = 'red' if 변동률 >= 0 else 'blue'
+
+        # 전일 대비
+        전일_diff = 현재가 - prev_close if prev_close > 0 else 0
+        if 전일_diff > 0:
+            전일_str = f"+{전일_diff:,}"
+            c_전일 = 'red'
+        elif 전일_diff < 0:
+            전일_str = f"{전일_diff:,}"
+            c_전일 = 'blue'
+        else:
+            전일_str = "0"
+            c_전일 = 'black'
+
+        # 전일률
+        전일률 = ((현재가 - prev_close) / prev_close * 100) if prev_close > 0 else 0.0
+        c_전일률 = 'red' if 전일률 >= 0 else 'blue'
+
+        # 평단가 대비
+        평단가_diff = 현재가 - 평단가 if 평단가 > 0 else 0
+        if 평단가_diff > 0:
+            평단가_str = f"+{평단가_diff:,}"
+            c_평단가 = 'red'
+        elif 평단가_diff < 0:
+            평단가_str = f"{평단가_diff:,}"
+            c_평단가 = 'blue'
+        else:
+            평단가_str = "0"
+            c_평단가 = 'black'
+
+        # 평가율
+        평가율 = (평단가_diff / 평단가 * 100) if 평단가 > 0 else 0.0
+        c_평가율 = 'red' if 평가율 >= 0 else 'blue'
+
+        # 거래량 증가율 (누적 거래량이므로 이전 대비 증가율)
+        if prev_volume > 0 and 거래량 > prev_volume:
+            vol_increase_pct = ((거래량 - prev_volume) / prev_volume) * 100
+            거래량_str = f"{거래량:,} <font color='red'>+{vol_increase_pct:.1f}%</font>"
+        else:
+            거래량_str = f"{거래량:,}"
+
+        # Paragraph 생성
+        p_거래량 = Paragraph(거래량_str, cell_style_center)
+        p_현재가 = Paragraph(f"{현재가:,}", cell_style_center)
+        p_직전 = Paragraph(f"<font color='{c_직전}'>{직전_str}</font>", cell_style_center)
+        p_변동률 = Paragraph(f"<font color='{c_변동률}'>{변동률:+.2f}%</font>", cell_style_center)
+        p_전일 = Paragraph(f"<font color='{c_전일}'>{전일_str}</font>", cell_style_center)
+        p_전일률 = Paragraph(f"<font color='{c_전일률}'>{전일률:+.2f}%</font>", cell_style_center)
+        p_평단가 = Paragraph(f"<font color='{c_평단가}'>{평단가_str}</font>", cell_style_center)
+        p_평가율 = Paragraph(f"<font color='{c_평가율}'>{평가율:+.2f}%</font>", cell_style_small)
 
         detail_table_data.append([
             시간,
+            p_거래량,
             p_현재가,
-            f"{거래량:,}",
-            f"{직전:,}",
+            p_직전,
             p_변동률,
             p_전일,
             p_전일률,
@@ -275,7 +338,7 @@ def create_stock_realtime_dashboard(stock_info, holding_info, min_ticks_data):
             p_평가율
         ])
 
-    detail_table = Table(detail_table_data, colWidths=[1.5*cm, 2*cm, 2*cm, 1.5*cm, 2*cm, 2*cm, 1.5*cm, 1.5*cm, 1.5*cm])
+    detail_table = Table(detail_table_data, colWidths=[1.5*cm, 2.5*cm, 2*cm, 1.5*cm, 1.8*cm, 1.8*cm, 1.5*cm, 1.5*cm, 1.5*cm])
     detail_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#e0e0e0')),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),

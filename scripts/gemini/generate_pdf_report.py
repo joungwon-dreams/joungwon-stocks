@@ -169,12 +169,18 @@ class PDFReportGenerator:
         query = "SELECT stock_code, stock_name, quantity, avg_buy_price FROM stock_assets WHERE stock_code = $1"
         self.holding = await db.fetchrow(query, self.stock_code)
 
-        # Real-time Min Ticks (New)
+        # Real-time Min Ticks (New) - with prev_price, prev_volume for comparison
         query = """
-            SELECT timestamp, price, volume 
-            FROM min_ticks 
-            WHERE stock_code = $1 
-            ORDER BY timestamp DESC 
+            SELECT
+                timestamp,
+                price,
+                volume,
+                change_rate,
+                LAG(price, 1) OVER (ORDER BY timestamp) as prev_price,
+                LAG(volume, 1) OVER (ORDER BY timestamp) as prev_volume
+            FROM min_ticks
+            WHERE stock_code = $1
+            ORDER BY timestamp DESC
             LIMIT 60
         """
         self.min_ticks = await db.fetch(query, self.stock_code)
