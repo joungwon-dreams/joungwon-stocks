@@ -26,8 +26,11 @@ class Settings(BaseSettings):
     KIS_CANO: Optional[str] = None
     KIS_ACNT_PRDT_CD: Optional[str] = None
 
-    # Gemini API
+    # Gemini API (backup)
     GEMINI_API_KEY: Optional[str] = None
+
+    # Anthropic Claude API
+    ANTHROPIC_API_KEY: Optional[str] = None
 
     # Monitoring
     SLACK_WEBHOOK_URL: Optional[str] = None

@@ -1,6 +1,6 @@
 import aiohttp
 import logging
-from typing import List, Dict
+from typing import List, Dict, Any
 import os
 from dotenv import load_dotenv
 import google.generativeai as genai
@@ -12,10 +12,16 @@ load_dotenv()
 
 # Configure Gemini API
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
+
 
 class NaverNewsFetcher:
+    def __init__(self):
+        if GEMINI_API_KEY:
+            genai.configure(api_key=GEMINI_API_KEY)
+            self.model = genai.GenerativeModel('gemini-2.0-flash-lite')
+        else:
+            self.model = None
+
     async def fetch_news(self, stock_code: str) -> List[Dict[str, str]]:
         """Fetch real-time news headlines using Naver Mobile API."""
         # Mobile News API
@@ -25,7 +31,7 @@ class NaverNewsFetcher:
             'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1',
             'Referer': 'https://m.stock.naver.com/'
         }
-        
+
         news_items = []
         try:
             async with aiohttp.ClientSession(headers=headers) as session:
@@ -34,28 +40,28 @@ class NaverNewsFetcher:
                         data = await resp.json()
                         # The API returns a list of sections, each containing 'items'
                         # Structure: [{'items': [...]}, {'items': [...]}]
-                        
+
                         raw_sections = data if isinstance(data, list) else [data]
-                        
+
                         for section in raw_sections:
                             section_items = section.get('items', [])
                             for item in section_items:
                                 # Structure: {datetime: '202511251118', title: 'Title', ...}
                                 title = item.get('title', '')
                                 date_str = item.get('datetime', '')
-                                
+
                                 # Format date: 202511251118 -> 2025-11-25 11:18
                                 if len(date_str) == 12:
                                     date = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]} {date_str[8:10]}:{date_str[10:]}"
                                 else:
                                     date = date_str
-                                    
+
                                 oid = item.get('officeId', '')
                                 aid = item.get('articleId', '')
-                                
+
                                 # Clean title (remove HTML tags like <b>)
                                 title = title.replace('<b>', '').replace('</b>', '').replace('&quot;', '"')
-                                
+
                                 office_name = item.get('officeName', '알 수 없음')
 
                                 news_items.append({
@@ -71,7 +77,7 @@ class NaverNewsFetcher:
             logger.error(f"Naver news API fetch error: {e}")
 
         # Analyze sentiment and generate summaries using Gemini
-        if GEMINI_API_KEY and news_items:
+        if self.model and news_items:
             news_items = await self._analyze_news_with_gemini(news_items[:10])
 
         return news_items[:10]
@@ -79,14 +85,11 @@ class NaverNewsFetcher:
     async def _analyze_news_with_gemini(self, news_items: List[Dict]) -> List[Dict]:
         """Use Gemini AI to analyze sentiment and generate summaries"""
         try:
-            model = genai.GenerativeModel('gemini-2.5-flash')
-
             for item in news_items:
                 title = item['title']
 
                 # Create prompt for Gemini
-                prompt = f"""
-다음 주식 뉴스 제목을 분석해주세요:
+                prompt = f"""다음 주식 뉴스 제목을 분석해주세요:
 
 제목: {title}
 
@@ -106,7 +109,7 @@ class NaverNewsFetcher:
 """
 
                 try:
-                    response = model.generate_content(prompt)
+                    response = self.model.generate_content(prompt)
                     result_text = response.text.strip()
 
                     # Parse response
@@ -157,7 +160,7 @@ class NaverNewsFetcher:
             return '호재'
         elif neg_count > pos_count:
             return '악재'
-            return '중립'
+        return '중립'
 
     async def fetch_target_price_news(self, stock_code: str, stock_name: str) -> List[Dict[str, Any]]:
         """
@@ -176,7 +179,7 @@ class NaverNewsFetcher:
                         data = await resp.json()
                         # Handle list or dict response
                         raw_sections = data if isinstance(data, list) else [data]
-                        
+
                         for section in raw_sections:
                             items = section.get('items', [])
                             for item in items:
@@ -189,14 +192,14 @@ class NaverNewsFetcher:
                                     results.append(parsed)
         except Exception as e:
             logger.error(f"Error fetching target price news: {e}")
-            
+
         return results
 
     def _parse_target_price_news(self, title: str, stock_name: str) -> Dict[str, Any]:
         import re
         # Clean title (remove HTML tags)
         title = re.sub(r'<[^>]+>', '', title)
-        
+
         # 1. Verify stock name is present
         if stock_name not in title:
             return None
@@ -208,20 +211,20 @@ class NaverNewsFetcher:
         other_stocks = ['삼성전자', 'SK하이닉스', 'LG에너지솔루션', '현대차', '기아', 'POSCO홀딩스', 'NAVER', '카카오']
         for other in other_stocks:
             if other in title and other != stock_name:
-                # If another major stock is present, it's risky. 
+                # If another major stock is present, it's risky.
                 # E.g. "SK하이닉스 목표가 상향... 한국전력은 유지" -> parser might grab SK's price.
                 # Simple heuristic: Skip if another major stock is found.
                 return None
-        
+
         # 3. Extract Price (e.g., 6.2만, 62,000, 6만원)
         # Improved regex to avoid capturing dates or other numbers
         price_match = re.search(r'(\d+(?:[.,]\d+)?)(만|천)?원?', title)
         if not price_match:
             return None
-            
+
         num_str = price_match.group(1).replace(',', '')
         unit = price_match.group(2)
-        
+
         try:
             price = float(num_str)
             if unit == '만':
@@ -230,9 +233,9 @@ class NaverNewsFetcher:
                 price *= 1000
             elif price < 1000: # Assuming unit is '만' if small number found in context of target price
                  price *= 10000
-                 
+
             target_price = int(price)
-            
+
             # Sanity check: Target price shouldn't be too crazy (e.g. < 1000 won for KEPCO is unlikely, > 1,000,000 is unlikely)
             # But this depends on the stock.
             # Let's just rely on the regex for now.
@@ -246,7 +249,7 @@ class NaverNewsFetcher:
             if broker in title:
                 found_broker = broker + '증권' # Normalize
                 break
-        
+
         if found_broker == 'Unknown':
             # Try to find words ending in '증권' or '투자'
             broker_match = re.search(r'(\w+(?:증권|투자))', title)
