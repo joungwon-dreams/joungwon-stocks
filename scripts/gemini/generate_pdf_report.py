@@ -347,9 +347,9 @@ class PDFReportGenerator:
         # Add average buy price as a thick straight line
         if hasattr(self, 'holding') and self.holding and self.holding.get('avg_buy_price'):
             avg_buy_price = float(self.holding['avg_buy_price'])
-            ax.axhline(y=avg_buy_price, color='purple', linestyle='-', linewidth=2, alpha=0.8, label='Avg Buy Price')
-            # Increased font size for avg price
-            ax.text(dates[0], avg_buy_price, f"평단가: {int(avg_buy_price):,}", color='purple', va='bottom', ha='left', fontsize=10, fontweight='bold')
+            ax.axhline(y=avg_buy_price, color='#9C27B0', linestyle='-', linewidth=3.5, alpha=0.9, label='평단가')
+            # Large bold font for avg price label
+            ax.text(dates[-1], avg_buy_price, f"  평단가: {int(avg_buy_price):,}", color='#9C27B0', va='center', ha='left', fontsize=14, fontweight='bold')
 
         # Annotate Current Price
         ax.text(dates[-1], current_price, f"{current_price:,}", color=color, fontweight='bold', va='bottom', ha='right')
@@ -418,12 +418,19 @@ class PDFReportGenerator:
         if prices:
             ax1.plot(price_dates, prices, color='#455A64', linewidth=2, label='주가')
             ax1.set_ylabel('주가 (원)', fontsize=9)
-            ax1.legend(loc='upper left', fontsize=9)
             ax1.grid(True, alpha=0.3, linestyle='--')
             ax1.yaxis.set_major_formatter(ticker.FuncFormatter(lambda x, p: format(int(x), ',')))
             ax1.xaxis.set_major_locator(ticker.MaxNLocator(6))
             ax1.tick_params(axis='x', labelsize=8, rotation=0)
             ax1.set_title('주가 추이 (30일)', fontsize=12, fontweight='bold')
+
+            # Add average buy price as a thick straight line
+            if hasattr(self, 'holding') and self.holding and self.holding.get('avg_buy_price'):
+                avg_buy_price = float(self.holding['avg_buy_price'])
+                ax1.axhline(y=avg_buy_price, color='#9C27B0', linestyle='-', linewidth=3.5, alpha=0.9, label='평단가')
+                ax1.text(price_dates[-1], avg_buy_price, f"  평단가: {int(avg_buy_price):,}", color='#9C27B0', va='center', ha='left', fontsize=12, fontweight='bold')
+
+            ax1.legend(loc='upper left', fontsize=9)
 
         # Bottom: Investor Trends
         ax2.plot(dates, foreign, marker='o', linewidth=2, label='외국인', color='#E64A19', markersize=4)
@@ -468,11 +475,18 @@ class PDFReportGenerator:
             ax1.fill_between(price_dates, prices, alpha=0.1, color='#455A64')
             ax1.set_title('주가 추이 (1년)', fontsize=12, fontweight='bold')
             ax1.set_ylabel('주가 (원)', fontsize=9)
-            ax1.legend(loc='upper left', fontsize=9)
             ax1.grid(True, alpha=0.3, linestyle='--')
             ax1.yaxis.set_major_formatter(ticker.FuncFormatter(lambda x, p: format(int(x), ',')))
             ax1.xaxis.set_major_locator(ticker.MaxNLocator(8))
             ax1.tick_params(axis='x', labelsize=8, rotation=0)
+
+            # Add average buy price as a thick straight line
+            if hasattr(self, 'holding') and self.holding and self.holding.get('avg_buy_price'):
+                avg_buy_price = float(self.holding['avg_buy_price'])
+                ax1.axhline(y=avg_buy_price, color='#9C27B0', linestyle='-', linewidth=3.5, alpha=0.9, label='평단가')
+                ax1.text(price_dates[-1], avg_buy_price, f"  평단가: {int(avg_buy_price):,}", color='#9C27B0', va='center', ha='left', fontsize=12, fontweight='bold')
+
+            ax1.legend(loc='upper left', fontsize=9)
 
         # Bottom: Cumulative Trends
         ax2.plot(dates, foreign_cum, linewidth=2, label='외국인 누적', color='#E64A19')
