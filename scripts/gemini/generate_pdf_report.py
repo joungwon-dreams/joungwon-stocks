@@ -57,7 +57,7 @@ class PDFReportGenerator:
         self.chart_dir.mkdir(exist_ok=True)
 
     async def fetch_all_data(self):
-        """Fetch all required data from database"""
+        """Fetch all required data from database, with realtime fallback for missing data"""
         print(f"📊 Fetching data for {self.stock_code}...")
 
         # Basic info
@@ -68,9 +68,20 @@ class PDFReportGenerator:
         query = "SELECT * FROM stock_fundamentals WHERE stock_code = $1"
         self.fundamentals = await db.fetchrow(query, self.stock_code)
 
+        # Fetch company_summary from Naver if missing
+        if self.fundamentals and not self.fundamentals.get('company_summary'):
+            print(f"   ⚠️ company_summary 없음 → 네이버에서 실시간 수집")
+            await self._fetch_company_summary_from_naver()
+
         # Consensus - from investment_consensus table (Naver Finance)
         from scripts.naver.consensus_scraper import NaverConsensusScraper
         self.consensus = await NaverConsensusScraper.get_from_db(self.stock_code)
+
+        # Fetch consensus from Naver if missing or outdated
+        if not self.consensus:
+            print(f"   ⚠️ consensus 없음 → 네이버에서 실시간 수집")
+            scraper = NaverConsensusScraper()
+            self.consensus = await scraper.fetch_and_save(self.stock_code)
 
         # Financial statements (yearly)
         query = """
@@ -126,9 +137,18 @@ class PDFReportGenerator:
         from scripts.gemini.wisefn.reports_scraper import WISEfnReportsScraper
         wisefn_reports = await WISEfnReportsScraper.get_from_db(self.stock_code, limit=10)
 
+        # Fetch from WISEfn if no reports in DB
+        if not wisefn_reports:
+            print(f"   ⚠️ WISEfn 리포트 없음 → WISEfn에서 실시간 수집")
+            wisefn_scraper = WISEfnReportsScraper()
+            fetched_reports = await wisefn_scraper.fetch_reports(self.stock_code)
+            if fetched_reports:
+                await wisefn_scraper.save_to_db(self.stock_code, fetched_reports)
+                wisefn_reports = await WISEfnReportsScraper.get_from_db(self.stock_code, limit=10)
+
         # Convert WISEfn format to analyst_targets format
         self.analyst_targets = []
-        for report in wisefn_reports:
+        for report in (wisefn_reports or []):
             # Convert date format: YY.MM.DD -> YYYYMMDD
             date_str = report['date']  # e.g., "25.11.25"
             if '.' in date_str:
@@ -162,6 +182,58 @@ class PDFReportGenerator:
         print(f"   ✅ Data fetched successfully")
         print(f"   DEBUG: Consensus keys: {self.consensus.keys() if self.consensus else 'None'}")
         print(f"   DEBUG: Analyst Targets count: {len(self.analyst_targets) if self.analyst_targets else 0}")
+
+    async def _fetch_company_summary_from_naver(self):
+        """Fetch company summary from Naver Finance and update fundamentals"""
+        try:
+            import aiohttp
+            from bs4 import BeautifulSoup
+
+            url = f"https://finance.naver.com/item/main.naver?code={self.stock_code}"
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers={'User-Agent': 'Mozilla/5.0'}) as response:
+                    if response.status == 200:
+                        html = await response.text()
+                        soup = BeautifulSoup(html, 'html.parser')
+
+                        # Find company summary div
+                        summary_div = soup.find('div', class_='summary_info')
+                        if summary_div:
+                            summary_text = summary_div.get_text(strip=True)
+                            # Clean up text
+                            summary_text = ' '.join(summary_text.split())
+
+                            if summary_text and len(summary_text) > 20:
+                                # Update fundamentals dict (in-memory)
+                                if self.fundamentals:
+                                    # Convert Record to dict for modification
+                                    self.fundamentals = dict(self.fundamentals)
+                                    self.fundamentals['company_summary'] = summary_text
+
+                                # Also save to database
+                                await db.execute("""
+                                    UPDATE stock_fundamentals
+                                    SET company_summary = $1
+                                    WHERE stock_code = $2
+                                """, summary_text, self.stock_code)
+                                print(f"   ✅ company_summary 수집 완료 ({len(summary_text)}자)")
+                                return
+
+                        # Alternative: Try meta description
+                        meta_desc = soup.find('meta', attrs={'name': 'description'})
+                        if meta_desc and meta_desc.get('content'):
+                            summary_text = meta_desc['content']
+                            if self.fundamentals:
+                                self.fundamentals = dict(self.fundamentals)
+                                self.fundamentals['company_summary'] = summary_text
+                            await db.execute("""
+                                UPDATE stock_fundamentals
+                                SET company_summary = $1
+                                WHERE stock_code = $2
+                            """, summary_text, self.stock_code)
+                            print(f"   ✅ company_summary (meta) 수집 완료 ({len(summary_text)}자)")
+        except Exception as e:
+            print(f"   ❌ company_summary 수집 실패: {e}")
 
     def generate_charts(self):
         """Generate all charts"""
