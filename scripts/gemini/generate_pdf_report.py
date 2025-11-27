@@ -81,12 +81,12 @@ class PDFReportGenerator:
         """
         self.financials_yearly = await db.fetch(query, self.stock_code)
 
-        # OHLCV (last 120 days) - Reverted to 120
+        # OHLCV (last 365 days for 1 year charts)
         query = """
             SELECT date, close, volume
             FROM daily_ohlcv
             WHERE stock_code = $1
-            ORDER BY date DESC LIMIT 120
+            ORDER BY date DESC LIMIT 365
         """
         self.ohlcv = await db.fetch(query, self.stock_code)
 
@@ -186,9 +186,12 @@ class PDFReportGenerator:
         print(f"   ✅ Charts generated")
 
     def _generate_price_chart(self):
-        dates = [row['date'] for row in reversed(self.ohlcv)]
-        prices = [row['close'] for row in reversed(self.ohlcv)]
-        volumes = [row['volume'] for row in reversed(self.ohlcv)]
+        # Use only last 120 days for the price trend chart
+        data_120 = self.ohlcv[:120] if self.ohlcv else []
+        
+        dates = [row['date'] for row in reversed(data_120)]
+        prices = [row['close'] for row in reversed(data_120)]
+        volumes = [row['volume'] for row in reversed(data_120)]
 
         # Trend color: Red for Up, Blue for Down
         start_price = prices[0]
