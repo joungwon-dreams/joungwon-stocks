@@ -541,27 +541,25 @@ def create_pdf(holdings_list, output_path):
             c.setFillColor(COLOR_BLACK)
             c.drawString(col_time, y_position, time_str)
 
-            # 거래량 우측 정렬 + 이전 거래량 대비 화살표
+            # 거래량 우측 정렬 + 이전 거래량 대비 증가율(%)
             volume_str = format_number(volume)
-            if volume > prev_volume:
-                volume_arrow = "▲"
-                arrow_color = COLOR_RED
-            elif volume < prev_volume:
-                volume_arrow = "▼"
-                arrow_color = COLOR_BLUE
+            if prev_volume > 0 and volume > prev_volume:
+                volume_increase_pct = ((volume - prev_volume) / prev_volume) * 100
+                volume_pct_str = f"+{volume_increase_pct:.1f}%"
+                pct_color = COLOR_RED
             else:
-                volume_arrow = ""
-                arrow_color = COLOR_BLACK
+                volume_pct_str = ""
+                pct_color = COLOR_BLACK
 
             # 거래량 숫자 출력
             volume_width = c.stringWidth(volume_str, font_name, font_size)
             c.setFillColor(COLOR_BLACK)
-            c.drawString(col_volume_right - volume_width - 15, y_position, volume_str)
+            c.drawString(col_volume_right - volume_width - 50, y_position, volume_str)
 
-            # 화살표 출력 (색상 적용)
-            if volume_arrow:
-                c.setFillColor(arrow_color)
-                c.drawString(col_volume_right - 12, y_position, volume_arrow)
+            # 증가율 출력 (색상 적용)
+            if volume_pct_str:
+                c.setFillColor(pct_color)
+                c.drawString(col_volume_right - 45, y_position, volume_pct_str)
 
             # 현재가 우측 정렬
             c.setFillColor(COLOR_BLACK)
