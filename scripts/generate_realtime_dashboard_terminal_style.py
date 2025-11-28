@@ -937,7 +937,7 @@ async def main():
         return
 
     # 출력 디렉토리
-    output_dir = Path('/Users/wonny/Dev/joungwon.stocks/reports')
+    output_dir = Path('/Users/wonny/Dev/joungwon.stocks/reports/holding_stock')
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # 보유종목 목록 조회 (평가금액 높은 순)
