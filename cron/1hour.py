@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-10-Minute Stock Data Collector & PDF Report Generator
-매 10분마다 실행되어 실시간 데이터 수집 및 PDF 리포트 재생성
+1-Hour Stock Data Collector & PDF Report Generator
+매 1시간마다 실행되어 데이터 수집 및 PDF 리포트 재생성
 
-실행 시간: 04:50 ~ 18:00
+실행 시간: 04:50 ~ 18:00 (매시 정각)
 
 기능:
 1. 04:50 첫 실행: 전일 주가 데이터 수집 (종가, 거래량, 수급)
-2. 매 10분: 현재가, 거래량 업데이트 + 뉴스 수집 + PDF 재생성
+2. 매 1시간: 현재가, 거래량 업데이트 + 뉴스 수집 + PDF 재생성
 3. 실패 데이터 재시도 로직
 4. 종목별 독립 실행 (한 종목 실패가 다른 종목에 영향 없음)
 """
@@ -32,7 +32,7 @@ sys.path.insert(0, '/Users/wonny/Dev/joungwon.stocks')
 PROJECT_ROOT = Path('/Users/wonny/Dev/joungwon.stocks')
 LOG_DIR = PROJECT_ROOT / 'logs'
 REPORTS_DIR = PROJECT_ROOT / 'reports'
-FAILED_DATA_FILE = LOG_DIR / '10min_failed_data.json'
+FAILED_DATA_FILE = LOG_DIR / '1hour_failed_data.json'
 
 # 데이터베이스 설정
 DB_CONFIG = {
@@ -43,11 +43,11 @@ DB_CONFIG = {
 }
 
 
-class TenMinuteCollector:
-    """10분 데이터 수집기"""
+class HourlyCollector:
+    """1시간 데이터 수집기"""
 
     def __init__(self):
-        self.log_file = LOG_DIR / '10min_collection.log'
+        self.log_file = LOG_DIR / '1hour_collection.log'
         LOG_DIR.mkdir(exist_ok=True)
         self.failed_items = self._load_failed_items()
 
@@ -666,7 +666,7 @@ class TenMinuteCollector:
 
 async def main():
     """메인 함수"""
-    collector = TenMinuteCollector()
+    collector = HourlyCollector()
     await collector.run()
 
 
