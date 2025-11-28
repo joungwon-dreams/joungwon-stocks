@@ -4,95 +4,144 @@ This file provides comprehensive context for Gemini when working on the `joungwo
 
 ## 1. Project Overview
 
-**joungwon.stocks** is an AI-powered automated stock trading system specifically designed for the Korean stock market. It leverages a tiered data collection strategy, reinforcement learning (A2C), and LLM-based sentiment analysis (Gemini Pro) to make trading decisions.
+**joungwon.stocks** is an AI-powered automated stock trading system for the Korean stock market.
 
-- **Goal:** Automate data collection, analysis, and trading execution.
-- **Status:** Phase 1 (Data Collection Enhancement) is active.
-- **Key Integrations:** Korea Investment Securities (KIS) API, Google Gemini API, KRX/DART systems.
+- **System Name:** PROJECT AEGIS (프로젝트 이지스)
+- **Philosophy:** 소중한 투자금을 리스크 관리로 보호하며 안정적인 수익 추구
+- **Goal:** 데이터 수집 → AI 분석 → 자동 매매 실행
+- **Status:** Phase 3 (Multi-Strategy Ensemble) 완료, 실전 운영 중
+- **Key Integrations:** Korea Investment Securities (KIS) API, Google Gemini API, PostgreSQL
 
-## 2. Architecture
+## 2. Current System Architecture
 
-The system follows a modular architecture with a strong emphasis on data integrity and asynchronous processing.
+### 2.1 Data Collection (4-Tier System)
 
-### Data Collection (4-Tier System)
-*   **Tier 1 (Official Libraries):** `pykrx`, `dart-fss`, `FinanceDataReader`. High reliability, strictly structured data.
-*   **Tier 2 (Official APIs):** `python-kis` (KIS API), Naver Finance API. Real-time prices via WebSocket.
-*   **Tier 3 (Web Scraping):** `Scrapy`, `BeautifulSoup`. News, reports, and unstructured data.
-*   **Tier 4 (Browser Automation):** `Playwright`, `DrissionPage`. Handling complex JS-heavy sites or anti-bot measures.
+| Tier | Type | Technology | 주기 |
+|------|------|------------|------|
+| 1 | Official Libraries | pykrx, dart-fss, FinanceDataReader | 1시간 |
+| 2 | Official APIs | KIS WebSocket, Naver/Daum Finance | 실시간 |
+| 3 | Web Scraping | aiohttp + BeautifulSoup | 1시간 |
+| 4 | Browser Automation | Playwright | 1시간 |
 
-### Core Components
-*   **Orchestrator (`src/core/orchestrator.py`):** Manages the concurrent execution of fetchers.
-*   **Pipelines:** Data flows through Validation (Pydantic) -> Transformation -> Storage (PostgreSQL).
-*   **Database:** PostgreSQL with `asyncpg`. Schema includes `stocks`, `daily_ohlcv`, `trade_history`, `min_ticks`.
-*   **AI Engine:**
-    *   **Sentiment:** Gemini Pro analyzes news/reports.
-    *   **Strategy:** RL A2C agent (planned integration with `quantylab/rltrader` logic).
+### 2.2 PROJECT AEGIS Components
 
-## 3. Directory Structure
-
-```text
-joungwon.stocks/
-├── docs/                    # Documentation & Requirements
-│   └── requirements.txt     # Python dependencies
-├── config/                  # Configuration files (DB, API keys)
-├── src/
-│   ├── core/                # Core logic (Orchestrator, BaseFetcher)
-│   ├── fetchers/            # Data collectors (Tier 1-4 organized)
-│   ├── ai/                  # AI/ML modules (Sentiment, RL)
-│   ├── pipelines/           # Data processing pipelines
-│   └── config/              # Pydantic settings
-├── scripts/                 # Utility and entry-point scripts
-├── sql/                     # SQL schemas and migration scripts
-├── tests/                   # Pytest suite
-└── venv/                    # Virtual environment
+```
+src/aegis/
+├── analysis/
+│   ├── indicators.py      # MA, RSI, VWAP 기술 지표
+│   ├── signal.py          # 점수 기반 신호 생성 (-3 ~ +3)
+│   └── backtest/          # 백테스팅 엔진
+├── risk/
+│   ├── manager.py         # ATR 손절, Kelly Criterion, 포지션 사이징
+│   └── circuit_breaker.py # 일일 손실/거래 제한
+└── ensemble/
+    ├── regime.py          # 시장 상태 분류 (BULL/BEAR/SIDEWAY)
+    ├── registry.py        # 전략 등록/관리
+    └── orchestrator.py    # 앙상블 신호 집계
 ```
 
-## 4. Development & Usage
+### 2.3 Signal Scoring System
 
-### Setup & Installation
-Dependencies are managed in `docs/requirements.txt`.
-```bash
-source venv/bin/activate
-pip install -r docs/requirements.txt
+| 지표 | 조건 | 점수 |
+|------|------|------|
+| MA | 정배열 (20 > 60) | +1 |
+| MA | 역배열 (20 < 60) | -1 |
+| VWAP | 가격 > VWAP (지지) | +1 |
+| VWAP | 가격 < VWAP (이탈) | -1 |
+| RSI | < 30 (과매도) | +1 |
+| RSI | > 70 (과매수) | -1 |
+
+**판정:** ≥+2 강수, +1 매수, 0 관망, -1 매도, ≤-2 강도
+
+## 3. Cron Jobs (자동화)
+
+| Cron | 주기 | 스크립트 | 출력 |
+|------|------|----------|------|
+| 1분 | 08:50~15:30 (평일) | `cron/1min.py` | min_ticks + realtime_dashboard.pdf |
+| 1시간 | 04:50~18:00 (매일) | `cron/1hour.py` | 종목별 PDF (10페이지) |
+
+## 4. PDF Reports
+
+### 4.1 realtime_dashboard.pdf (실시간 대시보드)
+
+**생성:** `scripts/generate_realtime_dashboard_terminal_style.py`
+**출력:** `reports/holding_stock/realtime_dashboard.pdf`
+
+| 페이지 | 내용 |
+|--------|------|
+| 1 | 포트폴리오 요약 + 종목별 상세 (AI등급, AEGIS 신호) |
+| 2 | 포트폴리오 차트 + AEGIS Market Dashboard |
+| 3 | 📜 AEGIS 신호 기록 (검증 결과) |
+| 4~ | 종목별 틱 데이터 |
+
+### 4.2 {종목명}.pdf (개별 리포트)
+
+**생성:** `scripts/gemini/generate_pdf_report.py`
+**출력:** `reports/holding_stock/{종목명}.pdf`
+
+- 10페이지 상세 분석 리포트
+- 구조: `docs/PDF_STRUCTURE_SPECIFICATION.md` 참조
+
+## 5. Database Schema
+
+### 5.1 Core Tables
+
+| 테이블 | 용도 |
+|--------|------|
+| stocks | 종목 마스터 |
+| stock_assets | 보유종목 (수량, 평단가, 손익) |
+| daily_ohlcv | 일봉 데이터 |
+| min_ticks | 1분봉 데이터 |
+| trade_history | 매매 기록 |
+| aegis_signal_history | AEGIS 신호 기록 및 검증 |
+
+### 5.2 AEGIS Signal History
+
+```sql
+aegis_signal_history (
+    id, stock_code, stock_name, signal_type, score, price,
+    created_at, result_1h, result_1d, is_success, verified_at
+)
 ```
 
-### Database Initialization
-```bash
-psql -U wonny -d stock_investment_db -f sql/01_create_tables.sql
-```
+## 6. Current Holdings (2025-11-28)
 
-### Running the System
-*   **Initial Collection:** `python scripts/run_initial_collection.py`
-*   **Orchestrator:** `python src/core/orchestrator.py`
-*   **Real-time Feed:** `python src/fetchers/tier2_official_apis/kis_websocket.py`
+| 종목 | 수량 | 평단가 | AEGIS 신호 |
+|------|------|--------|------------|
+| 대원전선 | 381주 | 3,634원 | 매수 (+1) |
+| 한국전력 | 208주 | 46,714원 | 강수 (+2) |
+| 한국카본 | 164주 | 27,792원 | 강도 (-2) |
+| 롯데쇼핑 | 79주 | 71,725원 | 강수 (+2) |
+| 파라다이스 | 635주 | 17,071원 | 매도 (-1) |
+| 카카오 | 166주 | 57,418원 | 매도 (-1) |
+| 세아홀딩스 | 12주 | 117,165원 | 부족 (0) |
+| 금양그린파워 | 527주 | 11,651원 | 매수 (+1) |
+| HDC현대산업개발 | 288주 | 18,582원 | 매도 (-1) |
+| 우리금융지주 | 511주 | 26,083원 | 매수 (+1) |
+| HD현대에너지솔루션 | 68주 | 51,071원 | 매수 (+1) |
 
-### Testing
-Use `pytest` for unit and integration tests.
-```bash
-pytest tests/unit/
-pytest tests/integration/
-```
+## 7. Key Files Reference
 
-## 5. Conventions & Standards
+| 파일 | 용도 |
+|------|------|
+| `src/aegis/` | PROJECT AEGIS 핵심 모듈 |
+| `cron/1min.py` | 1분 데이터 수집 + 대시보드 |
+| `cron/1hour.py` | 1시간 데이터 수집 + PDF |
+| `scripts/verify_aegis_signals.py` | 신호 검증 스크립트 |
+| `docs/SYSTEM_EVOLUTION_DESIGN_SPEC.md` | 시스템 설계 명세 |
+| `docs/AI_COLLABORATION_LOG.md` | Claude-Gemini 협업 로그 |
 
-*   **Language:** Python 3.9+
-*   **Style:** PEP 8.
-*   **Async:** Extensive use of `asyncio` and `asyncpg`. DB operations should always be non-blocking.
-*   **Typing:** Type hints are required for all function signatures.
-*   **Configuration:** Use `src/config/settings.py` (Pydantic `BaseSettings`) for env vars. **NEVER hardcode credentials.**
-*   **Error Handling:** Use `try-except` blocks with `structlog` logging. Failures in one fetcher should not crash the orchestrator.
-*   **Fetcher Pattern:** All fetchers must inherit from `src.core.base_fetcher.BaseFetcher` and implement the `fetch()` method.
+## 8. Role Division
 
-## 6. Key Files
+- **Gemini:** 설계자 (Architect) - 고도화 로드맵, 전략 설계
+- **Claude:** 구현자 (Implementer) - MVP 코드 구현
 
-*   `src/config/settings.py`: Central configuration.
-*   `src/core/orchestrator.py`: Main entry point for batch data collection.
-*   `src/core/base_fetcher.py`: Base class for all data collectors.
-*   `CLAUDE.md`: Existing context file with detailed roadmap and examples.
-*   `docs/01-opensource-integration-analysis.md`: Detailed integration plan for external libraries.
+## 9. Pending Tasks
 
-## 7. Common Tasks
+1. Phase 3.5: `WeightOptimizer`, `RobustnessTester` 구현 확인
+2. AEGIS 신호 검증 (`scripts/verify_aegis_signals.py`) 정기 실행
+3. 첫 AEGIS 실전 매수 (롯데쇼핑 5주) 성과 모니터링
 
-*   **Adding a new data source:** Create a new fetcher in the appropriate Tier directory under `src/fetchers/`, inheriting from `BaseFetcher`. Register it in the `Orchestrator`.
-*   **Modifying DB Schema:** Add a new SQL script in `sql/` and update Pydantic models in `src/models/` (if applicable).
-*   **Debugging:** Check logs in `logs/` (if configured) or standard output.
+---
+
+*Last Updated: 2025-11-28*
