@@ -35,6 +35,41 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 # AEGIS 모듈 임포트
 from src.aegis.analysis.signal import Signal, calculate_signal_score, score_to_signal
 
+# Phase 4.5~6 모듈 임포트
+try:
+    from src.aegis.context import (
+        get_sentiment_meter,
+        get_calendar_fetcher,
+        MarketCondition,
+        SentimentLevel,
+    )
+    from src.aegis.global_macro import (
+        get_global_market_fetcher,
+        GlobalMarketFetcher,
+    )
+    from src.aegis.optimization.real_world import (
+        get_signal_validator,
+        get_integrity_manager,
+        ValidationDecision,
+    )
+    AEGIS_ADVANCED_AVAILABLE = True
+except ImportError as e:
+    print(f"⚠️ AEGIS 고급 모듈 로드 실패: {e}")
+    AEGIS_ADVANCED_AVAILABLE = False
+
+# Phase 7 모듈 임포트 (검증 대시보드 + 신호 추적)
+try:
+    from src.aegis.verification import (
+        get_verification_dashboard,
+        VerificationDashboard,
+        get_signal_tracer,
+        SignalTraceManager,
+    )
+    AEGIS_VERIFICATION_AVAILABLE = True
+except ImportError as e:
+    print(f"⚠️ AEGIS 검증 모듈 로드 실패: {e}")
+    AEGIS_VERIFICATION_AVAILABLE = False
+
 # matplotlib 한글 폰트 설정
 plt.rcParams['font.family'] = 'AppleGothic'
 plt.rcParams['axes.unicode_minus'] = False
@@ -422,6 +457,146 @@ async def get_aegis_signal(stock_code: str) -> tuple:
         await conn.close()
 
 
+async def get_market_weather_data() -> dict:
+    """
+    시장 기상도 데이터 수집 (Phase 4.5~6)
+
+    Returns:
+        dict: 시장 심리, 미국 시장, 주요 일정 데이터
+    """
+    weather_data = {
+        'sentiment': None,
+        'us_market': None,
+        'calendar': None,
+        'nq_futures': None,
+        'available': False
+    }
+
+    if not AEGIS_ADVANCED_AVAILABLE:
+        return weather_data
+
+    try:
+        # 1. 시장 심리 (VIX, Fear & Greed)
+        sentiment_meter = get_sentiment_meter()
+        sentiment_result = await sentiment_meter.analyze()
+        weather_data['sentiment'] = {
+            'condition': sentiment_result.condition.value,
+            'score': sentiment_result.sentiment_score,
+            'level': sentiment_result.sentiment_level.value,
+            'vix': sentiment_result.vix_value,
+            'vix_level': sentiment_result.vix_level,
+            'risk_warning': sentiment_result.risk_warning,
+            'warning_msg': sentiment_result.warning_message,
+        }
+
+        # 2. 미국 시장 데이터
+        global_fetcher = get_global_market_fetcher()
+        us_data = await global_fetcher.fetch()
+        weather_data['us_market'] = {
+            'sentiment': us_data.overall_sentiment.value,
+            'nasdaq': us_data.indices.get('^IXIC'),
+            'sox': us_data.indices.get('^SOX'),
+            'sp500': us_data.indices.get('^GSPC'),
+            'usd_krw': us_data.usd_krw,
+            'usd_krw_change': us_data.usd_krw_change,
+        }
+
+        # 3. 나스닥 선물 (프리마켓용)
+        if us_data.nasdaq_futures:
+            weather_data['nq_futures'] = {
+                'price': us_data.nasdaq_futures.price,
+                'change_pct': us_data.nasdaq_futures.change_pct,
+            }
+
+        # 4. 경제 일정 (D-Day)
+        calendar_fetcher = get_calendar_fetcher()
+        calendar_result = await calendar_fetcher.analyze(days_ahead=7)
+        weather_data['calendar'] = {
+            'risk_level': calendar_result.risk_level,
+            'risk_score': calendar_result.risk_score,
+            'today_events': [
+                {'name': e.name, 'impact': e.impact.value, 'd_day': e.d_day}
+                for e in calendar_result.today_events[:3]
+            ],
+            'upcoming_events': [
+                {'name': e.name, 'impact': e.impact.value, 'd_day': e.d_day}
+                for e in calendar_result.upcoming_events[:3]
+            ],
+            'warning_msg': calendar_result.warning_message,
+        }
+
+        weather_data['available'] = True
+
+    except Exception as e:
+        print(f"   ⚠️ 시장 기상도 데이터 수집 오류: {e}")
+
+    return weather_data
+
+
+async def get_risk_alerts(aegis_signals: list, market_weather: dict) -> list:
+    """
+    FinalSignalValidator 기반 리스크 경고 수집 (Phase 6)
+
+    Returns:
+        list: 리스크 경고 목록
+    """
+    risk_alerts = []
+
+    if not AEGIS_ADVANCED_AVAILABLE:
+        return risk_alerts
+
+    try:
+        # 시장 패닉/과열 경고
+        if market_weather.get('sentiment'):
+            sentiment = market_weather['sentiment']
+            if sentiment.get('condition') in ['panic', 'fear']:
+                risk_alerts.append({
+                    'type': 'MARKET_PANIC',
+                    'level': 'critical',
+                    'message': f"시장 공포 상태 (F&G: {sentiment.get('score', '-')})",
+                    'action': '신규 매수 보류 권장'
+                })
+            elif sentiment.get('condition') == 'euphoria':
+                risk_alerts.append({
+                    'type': 'OVERHEATED',
+                    'level': 'warning',
+                    'message': f"시장 과열 상태 (F&G: {sentiment.get('score', '-')})",
+                    'action': '포지션 축소 권장'
+                })
+
+            # VIX 경고
+            if sentiment.get('vix_level') in ['high', 'extreme']:
+                risk_alerts.append({
+                    'type': 'VIX_HIGH',
+                    'level': 'warning',
+                    'message': f"VIX 고점 ({sentiment.get('vix', '-'):.1f})",
+                    'action': '변동성 주의'
+                })
+
+        # 캘린더 리스크 경고
+        if market_weather.get('calendar'):
+            calendar = market_weather['calendar']
+            if calendar.get('risk_level') == 'critical':
+                risk_alerts.append({
+                    'type': 'CALENDAR_CRITICAL',
+                    'level': 'critical',
+                    'message': calendar.get('warning_msg', '중요 경제 이벤트'),
+                    'action': '신규 매수 자제'
+                })
+            elif calendar.get('risk_level') == 'high':
+                risk_alerts.append({
+                    'type': 'CALENDAR_HIGH',
+                    'level': 'warning',
+                    'message': calendar.get('warning_msg', '고영향 경제 이벤트'),
+                    'action': '포지션 주의'
+                })
+
+    except Exception as e:
+        print(f"   ⚠️ 리스크 경고 수집 오류: {e}")
+
+    return risk_alerts
+
+
 async def get_aegis_signal_history(limit: int = 10) -> list:
     """최근 AEGIS 신호 히스토리 조회 (검증 결과 포함)"""
     conn = await asyncpg.connect(**DB_CONFIG)
@@ -442,12 +617,14 @@ async def get_aegis_signal_history(limit: int = 10) -> list:
         await conn.close()
 
 
-def create_aegis_dashboard_page(c, aegis_signals, signal_history, page_width, page_height):
+def create_aegis_dashboard_page(c, aegis_signals, signal_history, page_width, page_height, market_weather=None, risk_alerts=None):
     """
     PROJECT AEGIS Market Dashboard 페이지 생성 (3페이지)
+    - [NEW] 시장 기상도 (Market Weather) 섹션
     - 매수/매도 추천 종목 2단 레이아웃
     - 보유종목 AEGIS 신호 현황 테이블
-    - 신호 기록 히스토리 테이블
+    - [4페이지] 신호 기록 히스토리 테이블
+    - [NEW] 리스크 경고 섹션
     """
     font_name = 'AppleGothic'
     now = datetime.now()
@@ -463,7 +640,110 @@ def create_aegis_dashboard_page(c, aegis_signals, signal_history, page_width, pa
     c.setFont(font_name, 11)
     c.setFillColor(colors.grey)
     c.drawCentredString(page_width / 2, y, f"AI 기반 매매 신호 분석 | {now.strftime('%Y-%m-%d %H:%M')}")
-    y -= 40
+    y -= 30
+
+    # ===== [NEW] 시장 기상도 (Market Weather) 섹션 =====
+    if market_weather and market_weather.get('available'):
+        c.setFont(font_name, 12)
+        c.setFillColor(COLOR_BLACK)
+        c.drawString(50, y, "🌤️ 시장 기상도 (Market Weather)")
+        y -= 18
+
+        # 3열 테이블 생성: 시장 심리 | 미국 시장 | 주요 일정
+        weather_header = ['시장 심리 (VIX)', '미국 시장 (나스닥/SOX)', '주요 일정 (D-Day)']
+
+        # 데이터 준비
+        sentiment_data = market_weather.get('sentiment', {})
+        us_market_data = market_weather.get('us_market', {})
+        calendar_data = market_weather.get('calendar', {})
+
+        # 시장 심리 텍스트
+        sentiment_condition = sentiment_data.get('condition', '-')
+        sentiment_score = sentiment_data.get('score', '-')
+        vix_value = sentiment_data.get('vix', '-')
+        vix_level = sentiment_data.get('vix_level', '-')
+        sentiment_text = f"{sentiment_condition}\nF&G: {sentiment_score}\nVIX: {vix_value} ({vix_level})"
+
+        # 미국 시장 텍스트
+        nasdaq = us_market_data.get('nasdaq')
+        sox = us_market_data.get('sox')
+        nq_futures = market_weather.get('nq_futures', {})
+
+        # IndexData는 dataclass이므로 속성에 직접 접근
+        nasdaq_chg = getattr(nasdaq, 'change_pct', 0) if nasdaq else 0
+        sox_chg = getattr(sox, 'change_pct', 0) if sox else 0
+        nq_chg = nq_futures.get('change_pct', 0) if isinstance(nq_futures, dict) else getattr(nq_futures, 'change_pct', 0) if nq_futures else 0
+
+        us_text = f"나스닥: {nasdaq_chg:+.2f}%\nSOX: {sox_chg:+.2f}%\nNQ선물: {nq_chg:+.2f}%"
+
+        # 주요 일정 텍스트
+        calendar_risk = calendar_data.get('risk_level', 'low')
+        today_events = calendar_data.get('today_events', [])
+        upcoming = calendar_data.get('upcoming_events', [])
+
+        if today_events:
+            events_str = ', '.join([e.get('event', '')[:10] for e in today_events[:2]])
+            calendar_text = f"⚠️ 오늘: {events_str}\n리스크: {calendar_risk}"
+        elif upcoming:
+            next_event = upcoming[0]
+            calendar_text = f"D-{next_event.get('days', '?')}: {next_event.get('event', '')[:15]}\n리스크: {calendar_risk}"
+        else:
+            calendar_text = f"주요 일정 없음\n리스크: {calendar_risk}"
+
+        weather_data = [
+            weather_header,
+            [sentiment_text, us_text, calendar_text]
+        ]
+
+        weather_col_widths = [(page_width - 100) / 3] * 3
+        weather_table = Table(weather_data, colWidths=weather_col_widths)
+
+        # 배경색 결정 (심리/미국시장/일정 기반)
+        def get_sentiment_bg_color(condition):
+            if condition in ['panic', 'fear', 'extreme_fear']:
+                return colors.Color(1.0, 0.85, 0.85)  # 연한 빨강
+            elif condition in ['greed', 'extreme_greed']:
+                return colors.Color(0.85, 0.85, 1.0)  # 연한 파랑
+            return colors.Color(0.95, 0.95, 0.95)  # 회색
+
+        def get_market_bg_color(change_pct):
+            if change_pct > 0.5:
+                return colors.Color(1.0, 0.85, 0.85)  # 연한 빨강 (상승)
+            elif change_pct < -0.5:
+                return colors.Color(0.85, 0.85, 1.0)  # 연한 파랑 (하락)
+            return colors.Color(0.95, 0.95, 0.95)  # 회색
+
+        def get_calendar_bg_color(risk_level):
+            if risk_level == 'critical':
+                return colors.Color(1.0, 0.8, 0.8)  # 빨강
+            elif risk_level == 'high':
+                return colors.Color(1.0, 0.9, 0.8)  # 주황
+            return colors.Color(0.95, 0.95, 0.95)  # 회색
+
+        sentiment_bg = get_sentiment_bg_color(sentiment_condition)
+        us_market_bg = get_market_bg_color(nasdaq_chg)
+        calendar_bg = get_calendar_bg_color(calendar_risk)
+
+        weather_style = [
+            ('FONTNAME', (0, 0), (-1, -1), font_name),
+            ('FONTSIZE', (0, 0), (-1, 0), 9),
+            ('FONTSIZE', (0, 1), (-1, 1), 9),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.Color(0.85, 0.9, 0.95)),  # 헤더 연한 파랑
+            ('BACKGROUND', (0, 1), (0, 1), sentiment_bg),
+            ('BACKGROUND', (1, 1), (1, 1), us_market_bg),
+            ('BACKGROUND', (2, 1), (2, 1), calendar_bg),
+            ('GRID', (0, 0), (-1, -1), 1, colors.lightgrey),
+            ('BOX', (0, 0), (-1, -1), 1.5, colors.grey),
+        ]
+
+        weather_table.setStyle(TableStyle(weather_style))
+        w_width, w_height = weather_table.wrap(0, 0)
+        weather_table.drawOn(c, 50, y - w_height)
+        y -= w_height + 15
+    else:
+        y -= 10  # market_weather 없을 때 약간의 간격만
 
     # 매수/매도 종목 분류
     buy_signals = []
@@ -539,32 +819,60 @@ def create_aegis_dashboard_page(c, aegis_signals, signal_history, page_width, pa
     c.drawString(50, y, "📊 보유종목 AEGIS 신호 현황")
     y -= 25
 
-    # 테이블 데이터 준비
-    table_header = ['종목명', '코드', '신호', '점수']
+    # 테이블 데이터 준비 (리스크 요인 컬럼 추가)
+    table_header = ['종목명', '코드', '신호', '점수', '리스크 요인']
     table_data = [table_header]
+
+    # 리스크 경고를 종목별로 매핑
+    stock_risks = {}
+    if risk_alerts:
+        for alert in risk_alerts:
+            # 종목별 리스크가 있으면 매핑
+            stock_code_alert = alert.get('stock_code')
+            if stock_code_alert:
+                if stock_code_alert not in stock_risks:
+                    stock_risks[stock_code_alert] = []
+                stock_risks[stock_code_alert].append(alert.get('message', '')[:15])
+
+    # 시장 전체 리스크 메시지 (종목 무관)
+    market_risk_msg = ""
+    if risk_alerts:
+        market_alerts = [a for a in risk_alerts if not a.get('stock_code')]
+        if market_alerts:
+            market_risk_msg = market_alerts[0].get('message', '')[:12]
 
     for stock_code, stock_name, aegis in aegis_signals:
         sig_text, _, _, sig_score = aegis
         score_str = f"+{sig_score}" if sig_score > 0 else str(sig_score)
-        table_data.append([stock_name, stock_code, sig_text, score_str])
 
-    col_widths = [150, 80, 80, 60]
+        # 리스크 요인 결정
+        if stock_code in stock_risks:
+            risk_text = stock_risks[stock_code][0]
+        elif market_risk_msg:
+            risk_text = market_risk_msg
+        else:
+            risk_text = "-"
+
+        table_data.append([stock_name, stock_code, sig_text, score_str, risk_text])
+
+    col_widths = [120, 70, 60, 50, 150]
     signal_table = Table(table_data, colWidths=col_widths)
 
     # 테이블 스타일
     table_style = [
         ('FONTNAME', (0, 0), (-1, -1), font_name),
-        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
         ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
         ('ALIGN', (0, 1), (0, -1), 'LEFT'),
-        ('ALIGN', (1, 1), (-1, -1), 'CENTER'),
+        ('ALIGN', (1, 1), (3, -1), 'CENTER'),
+        ('ALIGN', (4, 1), (4, -1), 'LEFT'),  # 리스크 요인 좌측 정렬
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('BACKGROUND', (0, 0), (-1, 0), colors.Color(0.9, 0.9, 0.9)),
         ('GRID', (0, 0), (-1, -1), 1, colors.lightgrey),
         ('BOX', (0, 0), (-1, -1), 1.5, colors.grey),
     ]
 
-    # 신호별 색상 적용
+    # 신호별 색상 적용 + 리스크 요인 색상
     for i, (stock_code, stock_name, aegis) in enumerate(aegis_signals):
         row = i + 1
         _, _, sig_color, sig_score = aegis
@@ -573,96 +881,357 @@ def create_aegis_dashboard_page(c, aegis_signals, signal_history, page_width, pa
         elif sig_score <= -1:
             table_style.append(('TEXTCOLOR', (2, row), (3, row), COLOR_BLUE))
 
+        # 리스크 요인이 있으면 주황색 표시
+        risk_text = table_data[row][4]
+        if risk_text and risk_text != "-":
+            table_style.append(('TEXTCOLOR', (4, row), (4, row), colors.Color(0.8, 0.4, 0.0)))
+            table_style.append(('BACKGROUND', (4, row), (4, row), colors.Color(1.0, 0.95, 0.9)))
+
     signal_table.setStyle(TableStyle(table_style))
     table_width, table_height = signal_table.wrap(0, 0)
-    signal_table.drawOn(c, 50, y - table_height)
+
+    # 테이블이 페이지를 넘어가는지 확인
+    available_height = y - 50  # 하단 여백 50
+    if table_height > available_height:
+        # 페이지를 넘겨서 새 페이지에 테이블 그리기
+        c.showPage()
+        y = page_height - 50
+        c.setFont(font_name, 14)
+        c.setFillColor(COLOR_BLACK)
+        c.drawString(50, y, "📊 보유종목 AEGIS 신호 현황 (계속)")
+        y -= 25
+        signal_table.drawOn(c, 50, y - table_height)
+    else:
+        signal_table.drawOn(c, 50, y - table_height)
 
     c.showPage()
 
-    # ===== 3페이지: 신호 기록 히스토리 =====
+    # ===== Phase 7: AEGIS 성적표 페이지 (신호 검증 결과) =====
     y = page_height - 50
 
     # 제목
     c.setFont(font_name, 24)
     c.setFillColor(COLOR_BLACK)
-    c.drawCentredString(page_width / 2, y, "📜 AEGIS 신호 기록")
+    c.drawCentredString(page_width / 2, y, "📊 AEGIS 성적표")
     y -= 25
 
     # 부제목
     c.setFont(font_name, 11)
     c.setFillColor(colors.grey)
-    c.drawCentredString(page_width / 2, y, f"신호 발생 후 1시간/1일 수익률 검증 결과 | {now.strftime('%Y-%m-%d %H:%M')}")
-    y -= 40
+    c.drawCentredString(page_width / 2, y, f"신호 검증 및 자기 진화 결과 (Phase 7) | {now.strftime('%Y-%m-%d %H:%M')}")
+    y -= 35
 
-    # 히스토리 테이블
-    history_header = ['기록 시간', '', '종목명', '신호', '점수', '진입가', '1H결과', '1D결과', '판정']
-    history_data = [history_header]
+    # Phase 7 검증 대시보드 데이터 로드
+    verification_data = None
+    if AEGIS_VERIFICATION_AVAILABLE:
+        try:
+            dashboard = get_verification_dashboard()
+            # sync wrapper for async function
+            import asyncio as _asyncio
+            loop = _asyncio.get_event_loop()
+            if loop.is_running():
+                # 이미 실행 중인 루프가 있으면 별도 처리
+                verification_data = None
+            else:
+                verification_data = loop.run_until_complete(dashboard.collect_data(30))
+        except Exception as e:
+            print(f"⚠️ Phase 7 데이터 로드 실패: {e}")
+            verification_data = None
 
-    # 신호 타입 축약
-    signal_short = {
-        'STRONG_BUY': '강수', 'BUY': '매수', 'HOLD': '관망',
-        'SELL': '매도', 'STRONG_SELL': '강도'
-    }
+    if verification_data:
+        # ===== 1. 요약 통계 =====
+        c.setFont(font_name, 12)
+        c.setFillColor(COLOR_BLACK)
+        c.drawString(50, y, "📈 성과 요약 (최근 30일)")
+        y -= 18
 
-    for item in signal_history[:12]:  # 최대 12개
-        recorded = item['recorded_at'].strftime('%m/%d %H:%M') if item['recorded_at'] else '-'
-        sig_type = signal_short.get(item['signal_type'], item['signal_type'])
-        score = f"{item['signal_score']:+d}"
-        price = f"{item['current_price']:,}"
-        r1h = f"{float(item['result_1h']):+.2f}%" if item['result_1h'] is not None else '-'
-        r1d = f"{float(item['result_1d']):+.2f}%" if item['result_1d'] is not None else '-'
-
-        if item['is_success'] is True:
-            judge = '✅승'
-        elif item['is_success'] is False:
-            judge = '❌패'
+        # 요약 테이블
+        summary_data = [
+            ['총 신호', '전체 승률', '누적 수익률', '분석 기간'],
+            [
+                f"{verification_data.total_signals:,}개",
+                f"{verification_data.overall_win_rate:.1f}%",
+                f"{verification_data.overall_return:+.1f}%",
+                "최근 30일"
+            ]
+        ]
+        summary_table = Table(summary_data, colWidths=[100, 100, 100, 100])
+        summary_style = [
+            ('FONTNAME', (0, 0), (-1, -1), font_name),
+            ('FONTSIZE', (0, 0), (-1, -1), 11),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.Color(0.2, 0.4, 0.6)),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.lightgrey),
+            ('BOX', (0, 0), (-1, -1), 1.5, colors.Color(0.2, 0.4, 0.6)),
+        ]
+        # 승률/수익률 색상
+        if verification_data.overall_win_rate >= 50:
+            summary_style.append(('TEXTCOLOR', (1, 1), (1, 1), COLOR_RED))
         else:
-            judge = '⏳'
+            summary_style.append(('TEXTCOLOR', (1, 1), (1, 1), COLOR_BLUE))
+        if verification_data.overall_return >= 0:
+            summary_style.append(('TEXTCOLOR', (2, 1), (2, 1), COLOR_RED))
+        else:
+            summary_style.append(('TEXTCOLOR', (2, 1), (2, 1), COLOR_BLUE))
 
-        history_data.append([recorded, '', item['stock_name'], sig_type, score, price, r1h, r1d, judge])
+        summary_table.setStyle(TableStyle(summary_style))
+        sw, sh = summary_table.wrap(0, 0)
+        summary_table.drawOn(c, 50, y - sh)
+        y -= sh + 25
 
-    # 컬럼 너비 (시간과 종목명 사이 빈 컬럼 추가)
-    history_col_widths = [80, 20, 90, 50, 45, 80, 70, 70, 45]
-    history_table = Table(history_data, colWidths=history_col_widths)
+        # ===== 2. 점수대별 승률 테이블 =====
+        c.setFont(font_name, 12)
+        c.setFillColor(COLOR_BLACK)
+        c.drawString(50, y, "🎯 점수대별 승률")
+        y -= 18
 
-    history_style = [
-        ('FONTNAME', (0, 0), (-1, -1), font_name),
-        ('FONTSIZE', (0, 0), (-1, -1), 11),
-        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),  # 헤더 중앙
-        ('ALIGN', (0, 1), (0, -1), 'LEFT'),    # 시간 왼쪽
-        ('ALIGN', (2, 1), (2, -1), 'LEFT'),    # 종목명 왼쪽
-        ('ALIGN', (3, 1), (-1, -1), 'CENTER'), # 나머지 중앙
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('BACKGROUND', (0, 0), (-1, 0), colors.Color(0.85, 0.85, 0.95)),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.lightgrey),
-        ('BOX', (0, 0), (-1, -1), 1.5, colors.grey),
-        ('LINEAFTER', (0, 0), (0, -1), 2, colors.grey),  # 시간 컬럼 오른쪽 굵은 선
-    ]
+        score_header = ['점수대', '신호 수', '승률', '평균 수익', 'MFE', 'MAE']
+        score_data = [score_header]
+        for band in ['80+', '70-79', '60-69', '50-59', '<50']:
+            if band in verification_data.win_rate_by_score:
+                stats = verification_data.win_rate_by_score[band]
+                score_data.append([
+                    band,
+                    f"{stats['total']}개",
+                    f"{stats['win_rate']:.1f}%",
+                    f"{stats['avg_return']:+.1f}%",
+                    f"+{stats.get('avg_mfe', 0):.1f}%",
+                    f"{stats.get('avg_mae', 0):.1f}%"
+                ])
+            else:
+                score_data.append([band, '0개', '-', '-', '-', '-'])
 
-    # 결과 색상 적용
-    for i, item in enumerate(signal_history[:12]):
-        row = i + 1
-        # 1H 결과 색상
-        if item['result_1h'] is not None:
-            if float(item['result_1h']) > 0:
-                history_style.append(('TEXTCOLOR', (6, row), (6, row), COLOR_RED))
-            elif float(item['result_1h']) < 0:
-                history_style.append(('TEXTCOLOR', (6, row), (6, row), COLOR_BLUE))
-        # 1D 결과 색상
-        if item['result_1d'] is not None:
-            if float(item['result_1d']) > 0:
-                history_style.append(('TEXTCOLOR', (7, row), (7, row), COLOR_RED))
-            elif float(item['result_1d']) < 0:
-                history_style.append(('TEXTCOLOR', (7, row), (7, row), COLOR_BLUE))
-        # 신호 색상
-        if item['signal_score'] >= 1:
-            history_style.append(('TEXTCOLOR', (3, row), (4, row), COLOR_RED))
-        elif item['signal_score'] <= -1:
-            history_style.append(('TEXTCOLOR', (3, row), (4, row), COLOR_BLUE))
+        score_table = Table(score_data, colWidths=[60, 60, 60, 70, 60, 60])
+        score_style = [
+            ('FONTNAME', (0, 0), (-1, -1), font_name),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.Color(0.85, 0.85, 0.95)),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.lightgrey),
+            ('BOX', (0, 0), (-1, -1), 1.5, colors.grey),
+        ]
+        # 승률 60% 이상은 빨강, 40% 이하는 파랑
+        for i, band in enumerate(['80+', '70-79', '60-69', '50-59', '<50']):
+            row = i + 1
+            if band in verification_data.win_rate_by_score:
+                wr = verification_data.win_rate_by_score[band]['win_rate']
+                if wr >= 60:
+                    score_style.append(('TEXTCOLOR', (2, row), (2, row), COLOR_RED))
+                    score_style.append(('BACKGROUND', (0, row), (-1, row), colors.Color(1.0, 0.95, 0.95)))
+                elif wr <= 40:
+                    score_style.append(('TEXTCOLOR', (2, row), (2, row), COLOR_BLUE))
+                    score_style.append(('BACKGROUND', (0, row), (-1, row), colors.Color(0.95, 0.95, 1.0)))
 
-    history_table.setStyle(TableStyle(history_style))
-    h_table_width, h_table_height = history_table.wrap(0, 0)
-    history_table.drawOn(c, 50, y - h_table_height)
+        score_table.setStyle(TableStyle(score_style))
+        scw, sch = score_table.wrap(0, 0)
+        score_table.drawOn(c, 50, y - sch)
+        y -= sch + 25
+
+        # ===== 3. 시간대별 승률 (히트맵 간소화 버전) =====
+        c.setFont(font_name, 12)
+        c.setFillColor(COLOR_BLACK)
+        c.drawString(50, y, "⏰ 시간대별 승률")
+        y -= 18
+
+        hour_header = ['시간', '신호', '승률', '평균수익']
+        hour_data = [hour_header]
+        for hour in [9, 10, 11, 13, 14, 15]:
+            if hour in verification_data.win_rate_by_hour:
+                stats = verification_data.win_rate_by_hour[hour]
+                hour_data.append([
+                    f"{hour}시",
+                    f"{stats['total']}개",
+                    f"{stats['win_rate']:.1f}%",
+                    f"{stats['avg_return']:+.1f}%"
+                ])
+            else:
+                hour_data.append([f"{hour}시", '0개', '-', '-'])
+
+        hour_table = Table(hour_data, colWidths=[60, 60, 60, 70])
+        hour_style = [
+            ('FONTNAME', (0, 0), (-1, -1), font_name),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.Color(0.85, 0.95, 0.85)),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.lightgrey),
+            ('BOX', (0, 0), (-1, -1), 1.5, colors.grey),
+        ]
+        hour_table.setStyle(TableStyle(hour_style))
+        hw, hh = hour_table.wrap(0, 0)
+        hour_table.drawOn(c, 420, y + sch - hh)  # 오른쪽에 배치
+
+        # ===== 4. 최악의 거래 Top 3 =====
+        y -= 25
+        c.setFont(font_name, 12)
+        c.setFillColor(colors.Color(0.8, 0.2, 0.2))
+        c.drawString(50, y, "🔴 최악의 거래 Top 3")
+        y -= 18
+
+        failure_map = {
+            'market_crash': '시장급락',
+            'sector_rotation': '섹터로테이션',
+            'fake_breakout': '가짜돌파',
+            'news_shock': '뉴스충격',
+            'stop_loss_hit': '손절도달',
+            'time_decay': '시간소진',
+            'liquidity_issue': '유동성',
+            'unknown': '원인불명'
+        }
+
+        worst_header = ['종목', '점수', '60분 수익', 'MFE/MAE', '실패 원인']
+        worst_data = [worst_header]
+        for trade in verification_data.worst_trades[:3]:
+            worst_data.append([
+                trade.get('ticker', '-'),
+                f"{trade.get('final_score', 0):.0f}점",
+                f"{trade.get('return_60m', 0):+.1f}%",
+                f"+{trade.get('mfe', 0):.1f}%/{trade.get('mae', 0):.1f}%",
+                failure_map.get(trade.get('failure_tag'), '-')
+            ])
+
+        # 부족한 행 채우기
+        while len(worst_data) < 4:
+            worst_data.append(['-', '-', '-', '-', '-'])
+
+        worst_table = Table(worst_data, colWidths=[70, 50, 70, 100, 90])
+        worst_style = [
+            ('FONTNAME', (0, 0), (-1, -1), font_name),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.Color(0.9, 0.7, 0.7)),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.lightgrey),
+            ('BOX', (0, 0), (-1, -1), 1.5, colors.Color(0.8, 0.4, 0.4)),
+            ('TEXTCOLOR', (2, 1), (2, -1), COLOR_BLUE),  # 손실은 파랑
+        ]
+        worst_table.setStyle(TableStyle(worst_style))
+        ww, wh = worst_table.wrap(0, 0)
+        worst_table.drawOn(c, 50, y - wh)
+        y -= wh + 20
+
+        # ===== 5. Phase 7 상태 표시 =====
+        c.setFont(font_name, 10)
+        c.setFillColor(colors.Color(0.3, 0.6, 0.3))
+        c.drawString(50, y, "✅ Phase 7 신호 검증 시스템 활성화 | SignalTraceManager 실시간 추적 중")
+
+    else:
+        # Phase 7 데이터 없음 - 기존 히스토리 테이블 표시 (Fallback)
+        c.setFont(font_name, 14)
+        c.setFillColor(colors.grey)
+        c.drawCentredString(page_width / 2, y, "📊 Phase 7 데이터 수집 중...")
+        y -= 30
+
+        c.setFont(font_name, 11)
+        c.drawCentredString(page_width / 2, y, "신호 검증 데이터가 아직 충분하지 않습니다.")
+        y -= 20
+        c.drawCentredString(page_width / 2, y, "SignalTraceManager가 백그라운드에서 데이터를 수집 중입니다.")
+        y -= 40
+
+        # 기존 신호 기록 히스토리 (간소화)
+        c.setFont(font_name, 12)
+        c.setFillColor(COLOR_BLACK)
+        c.drawString(50, y, "📜 최근 신호 기록")
+        y -= 18
+
+        history_header = ['기록 시간', '종목명', '신호', '점수', '진입가', '판정']
+        history_data = [history_header]
+
+        signal_short = {
+            'STRONG_BUY': '강수', 'BUY': '매수', 'HOLD': '관망',
+            'SELL': '매도', 'STRONG_SELL': '강도'
+        }
+
+        for item in signal_history[:8]:  # 최대 8개
+            recorded = item['recorded_at'].strftime('%m/%d %H:%M') if item['recorded_at'] else '-'
+            sig_type = signal_short.get(item['signal_type'], item['signal_type'])
+            score = f"{item['signal_score']:+d}"
+            price = f"{item['current_price']:,}"
+
+            if item['is_success'] is True:
+                judge = '✅승'
+            elif item['is_success'] is False:
+                judge = '❌패'
+            else:
+                judge = '⏳'
+
+            history_data.append([recorded, item['stock_name'], sig_type, score, price, judge])
+
+        history_col_widths = [80, 90, 50, 45, 80, 45]
+        history_table = Table(history_data, colWidths=history_col_widths)
+
+        history_style = [
+            ('FONTNAME', (0, 0), (-1, -1), font_name),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.Color(0.85, 0.85, 0.95)),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.lightgrey),
+            ('BOX', (0, 0), (-1, -1), 1.5, colors.grey),
+        ]
+
+        history_table.setStyle(TableStyle(history_style))
+        h_table_width, h_table_height = history_table.wrap(0, 0)
+        history_table.drawOn(c, 50, y - h_table_height)
+
+    # ===== [NEW] 실시간 리스크 경고 (Risk Alerts) 섹션 =====
+    # 페이지 하단에 배치
+    y = 120
+    if risk_alerts and len(risk_alerts) > 0:
+        c.setFont(font_name, 12)
+        c.setFillColor(COLOR_BLACK)
+        c.drawString(50, y, "⚠️ 실시간 리스크 경고")
+        y -= 18
+
+        alert_header = ['구분', '심각도', '경고 내용']
+        alert_data = [alert_header]
+
+        for alert in risk_alerts[:3]:  # 최대 3개
+            alert_type = alert.get('type', '-')
+            level = alert.get('level', '-')
+            message = alert.get('message', '-')
+
+            type_short = {
+                'MARKET_PANIC': '시장패닉',
+                'VIX_EXTREME': 'VIX경고',
+                'CALENDAR_CRITICAL': '일정경고',
+                'BLOCK_BUY': '매수차단',
+                'FORCE_SELL': '강제매도',
+                'LIQUIDITY_TRAP': '유동성',
+            }.get(alert_type, alert_type[:6])
+
+            level_text = {
+                'critical': '🔴 위험',
+                'high': '🟠 경고',
+                'medium': '🟡 주의',
+                'low': '🟢 참고',
+            }.get(level, level)
+
+            alert_data.append([type_short, level_text, message[:30]])
+
+        alert_col_widths = [70, 70, 250]
+        alert_table = Table(alert_data, colWidths=alert_col_widths)
+
+        alert_style = [
+            ('FONTNAME', (0, 0), (-1, -1), font_name),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.Color(0.95, 0.85, 0.85)),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.lightgrey),
+            ('BOX', (0, 0), (-1, -1), 1.5, colors.Color(0.8, 0.4, 0.4)),
+        ]
+
+        alert_table.setStyle(TableStyle(alert_style))
+        a_width, a_height = alert_table.wrap(0, 0)
+        alert_table.drawOn(c, 50, y - a_height)
+    else:
+        c.setFont(font_name, 11)
+        c.setFillColor(colors.Color(0.3, 0.6, 0.3))
+        c.drawString(50, y, "✅ 현재 리스크 경고 없음 - 정상 거래 가능")
 
     c.showPage()
 
@@ -850,8 +1419,11 @@ def create_summary_pages(c, holdings_data, aegis_signals, page_width, page_heigh
     temp_dir = tempfile.mkdtemp()
 
     try:
+        # [Phase 7.5] Chart Optimization: DPI 80, figsize 축소
+        CHART_DPI = 80  # 100 -> 80 (파일 크기 36% 감소)
+
         # 1. 파이차트 (Portfolio Allocation)
-        fig1, ax1 = plt.subplots(figsize=(5, 4))
+        fig1, ax1 = plt.subplots(figsize=(4, 3.2))  # 5x4 -> 4x3.2 (36% 축소)
         labels = [item['name'] for item in portfolio_data]
         sizes = [item['eval_amount'] for item in portfolio_data]
         percentages = [s / total_evaluation * 100 for s in sizes]
@@ -864,27 +1436,27 @@ def create_summary_pages(c, holdings_data, aegis_signals, page_width, page_heigh
             sizes, labels=labels, autopct='%1.1f%%',
             colors=chart_colors, startangle=90
         )
-        ax1.set_title('Portfolio Allocation', fontsize=12)
+        ax1.set_title('Portfolio Allocation', fontsize=10)  # 12 -> 10
         plt.tight_layout()
 
         pie_path = os.path.join(temp_dir, 'pie_chart.png')
-        plt.savefig(pie_path, dpi=100, bbox_inches='tight', facecolor='white')
+        plt.savefig(pie_path, dpi=CHART_DPI, bbox_inches='tight', facecolor='white')
         plt.close(fig1)
 
         # 2. 막대그래프 (Profit/Loss by Stock)
-        fig2, ax2 = plt.subplots(figsize=(5, 4))
+        fig2, ax2 = plt.subplots(figsize=(4, 3.2))  # 5x4 -> 4x3.2 (36% 축소)
         names = [item['name'] for item in portfolio_data]
         pnls = [item['pnl'] for item in portfolio_data]
         bar_colors = ['red' if p > 0 else 'green' for p in pnls]
 
         ax2.barh(names, pnls, color=bar_colors)
-        ax2.set_xlabel('P/L (KRW)')
-        ax2.set_title('Profit/Loss by Stock', fontsize=12)
+        ax2.set_xlabel('P/L (KRW)', fontsize=9)
+        ax2.set_title('Profit/Loss by Stock', fontsize=10)  # 12 -> 10
         ax2.axvline(x=0, color='black', linewidth=0.5)
         plt.tight_layout()
 
         bar_path = os.path.join(temp_dir, 'bar_chart.png')
-        plt.savefig(bar_path, dpi=100, bbox_inches='tight', facecolor='white')
+        plt.savefig(bar_path, dpi=CHART_DPI, bbox_inches='tight', facecolor='white')
         plt.close(fig2)
 
         # 차트를 PDF에 추가
@@ -905,7 +1477,7 @@ def create_summary_pages(c, holdings_data, aegis_signals, page_width, page_heigh
     c.showPage()
 
 
-def create_pdf(holdings_list, aegis_signals, signal_history, output_path):
+def create_pdf(holdings_list, aegis_signals, signal_history, output_path, market_weather=None, risk_alerts=None):
     """PDF 생성 (터미널 스타일, 한글 폰트, 색상 적용)"""
     from reportlab.pdfgen import canvas as pdf_canvas
     from reportlab.lib.pagesizes import landscape, A4
@@ -921,8 +1493,8 @@ def create_pdf(holdings_list, aegis_signals, signal_history, output_path):
     # ===== 1-2페이지: 포트폴리오 요약 =====
     create_summary_pages(c, holdings_list, aegis_signals, page_width, page_height)
 
-    # ===== 3페이지: PROJECT AEGIS Market Dashboard =====
-    create_aegis_dashboard_page(c, aegis_signals, signal_history, page_width, page_height)
+    # ===== 3-4페이지: PROJECT AEGIS Market Dashboard =====
+    create_aegis_dashboard_page(c, aegis_signals, signal_history, page_width, page_height, market_weather, risk_alerts)
 
     # ===== 4페이지~: 각 종목별 페이지 생성 =====
     for stock_code, stock_name, data in holdings_list:
@@ -1261,17 +1833,12 @@ async def main():
     # 시간 제한 체크 (04:00 ~ 18:00만 허용)
     now = datetime.now()
     current_hour = now.hour
-
     if current_hour < 4 or current_hour >= 18:
-        # 다음 생성 가능 시각 계산
         from datetime import timedelta
         if current_hour >= 18:
-            # 18시 이후면 내일 04시
             next_available = (now + timedelta(days=1)).replace(hour=4, minute=0, second=0)
         else:
-            # 04시 이전이면 오늘 04시
             next_available = now.replace(hour=4, minute=0, second=0)
-
         print(f"⚠️  PDF 생성 시간 제한: 04:00 ~ 18:00만 허용됩니다.")
         print(f"   현재 시각: {now.strftime('%Y-%m-%d %H:%M:%S')}")
         print(f"   다음 생성 가능 시각: {next_available.strftime('%Y-%m-%d %H:%M:%S')}")
@@ -1312,10 +1879,44 @@ async def main():
     signal_history = await get_aegis_signal_history(limit=10)
     print(f"   {len(signal_history)}건 조회 완료")
 
+    # [Phase 4.5~6] 시장 기상도 데이터 수집
+    print("🌤️ 시장 기상도 데이터 수집 중...")
+    market_weather = await get_market_weather_data()
+    if market_weather.get('available'):
+        print(f"   ✅ 시장 기상도 수집 완료")
+        if market_weather.get('sentiment'):
+            print(f"      시장심리: {market_weather['sentiment'].get('condition', '-')}")
+        if market_weather.get('us_market'):
+            print(f"      미국시장: {market_weather['us_market'].get('sentiment', '-')}")
+    else:
+        print(f"   ⚠️ 시장 기상도 미수집 (AEGIS 고급 모듈 미사용)")
+
+    # [Phase 6] 리스크 경고 수집
+    print("⚠️ 리스크 경고 분석 중...")
+    risk_alerts = await get_risk_alerts(aegis_signals, market_weather)
+    if risk_alerts:
+        print(f"   🚨 {len(risk_alerts)}건의 리스크 경고 발생!")
+        for alert in risk_alerts[:3]:
+            print(f"      - [{alert.get('level', '-')}] {alert.get('message', '-')}")
+    else:
+        print(f"   ✅ 리스크 경고 없음")
+
+    # [Phase 7] SignalTraceManager 추적 업데이트 (시장 컨텍스트 수집 포함)
+    if AEGIS_VERIFICATION_AVAILABLE:
+        print("📈 AEGIS 신호 추적 업데이트 중...")
+        try:
+            tracer = get_signal_tracer()
+            active_count = await tracer.update_traces()
+            print(f"   ✅ 신호 추적 완료: {active_count}개 활성 신호")
+        except Exception as e:
+            print(f"   ⚠️ 신호 추적 실패: {e}")
+    else:
+        print("⚠️ AEGIS 검증 모듈 미사용 - 신호 추적 건너뜀")
+
     # PDF 생성
     output_path = output_dir / 'realtime_dashboard.pdf'
     print(f"📄 PDF 생성 중: {output_path}")
-    create_pdf(holdings_data, aegis_signals, signal_history, output_path)
+    create_pdf(holdings_data, aegis_signals, signal_history, output_path, market_weather, risk_alerts)
 
     print("\n" + "="*80)
     print(f"✅ 완료! PDF 경로: {output_path}")

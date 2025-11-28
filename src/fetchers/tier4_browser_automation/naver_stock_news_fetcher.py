@@ -6,12 +6,31 @@ Fetches:
 - 종목 뉴스 (Stock News)
 - 공시 (Disclosures)
 - 뉴스 감성 분석 (호재/악재)
+
+Phase 3.9 Enhanced Features:
+- 중복 뉴스 제거 (Jaccard Similarity)
+- 우선순위 점수 (Priority Scoring)
+- 중요 키워드 가중치
 """
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Set
 import re
 from datetime import datetime
+from difflib import SequenceMatcher
 
 from .base_playwright_fetcher import BasePlaywrightFetcher
+
+
+# Phase 3.9: 우선순위 키워드 (높은 점수)
+PRIORITY_KEYWORDS = {
+    5: ['단독', '속보', '긴급', '특종'],  # 최우선
+    4: ['공시', '계약', '수주', '인수', '합병', 'M&A'],  # 핵심 이벤트
+    3: ['실적', '매출', '영업이익', '순이익', '흑자전환', '적자전환'],  # 재무
+    2: ['목표가', '투자의견', '상향', '하향', '매수', '매도'],  # 증권사
+    1: ['특징주', '테마', '급등', '급락', '신고가', '신저가'],  # 시장 관심
+}
+
+# 중복 판단 임계값 (0.0 ~ 1.0)
+SIMILARITY_THRESHOLD = 0.7
 
 
 class NaverStockNewsFetcher(BasePlaywrightFetcher):
@@ -19,6 +38,11 @@ class NaverStockNewsFetcher(BasePlaywrightFetcher):
     Naver Stock News fetcher using Playwright.
 
     Target URL: https://finance.naver.com/item/news.naver?code={ticker}
+
+    Phase 3.9 Enhanced:
+    - 중복 뉴스 자동 제거
+    - 우선순위 점수 계산 (1-5)
+    - 감성 분석 개선
     """
 
     BASE_URL = "https://finance.naver.com/item/news.naver"
@@ -26,6 +50,7 @@ class NaverStockNewsFetcher(BasePlaywrightFetcher):
     def __init__(self, site_id: int, config: Dict[str, Any]):
         super().__init__(site_id, config)
         self.config['data_type'] = 'stock_news'
+        self._seen_titles: Set[str] = set()  # 중복 체크용
 
     def build_url(self, ticker: str) -> str:
         """Build Naver Stock News URL for ticker"""
@@ -66,19 +91,29 @@ class NaverStockNewsFetcher(BasePlaywrightFetcher):
         Returns:
             Parsed data dictionary
         """
+        # Reset seen titles for new ticker
+        self._seen_titles.clear()
+
+        raw_news_list = await self.parse_news_list()
+
+        # Phase 3.9: 중복 제거 및 우선순위 정렬
+        unique_news = self._deduplicate_news(raw_news_list)
+        sorted_news = sorted(unique_news, key=lambda x: x.get('priority', 0), reverse=True)
+
         data = {
             'ticker': ticker,
             'source': 'naver_stock_news',
             'crawled_at': datetime.now().isoformat(),
-            'news_list': await self.parse_news_list(),
-            'news_count': 0
+            'news_list': sorted_news,
+            'news_count': len(sorted_news),
+            'raw_count': len(raw_news_list),  # 원본 개수
+            'duplicates_removed': len(raw_news_list) - len(sorted_news)
         }
-
-        data['news_count'] = len(data['news_list'])
 
         self.logger.info(
             f"Naver Stock News parsed for {ticker}: "
-            f"{data['news_count']} news articles"
+            f"{data['news_count']} unique articles "
+            f"({data['duplicates_removed']} duplicates removed)"
         )
 
         return data
@@ -150,6 +185,8 @@ class NaverStockNewsFetcher(BasePlaywrightFetcher):
                 # Sentiment (간단한 키워드 기반)
                 if title_text:
                     news_item['sentiment'] = self.analyze_sentiment(title_text)
+                    # Phase 3.9: 우선순위 점수 추가
+                    news_item['priority'] = self.calculate_priority(title_text)
 
                 if news_item:
                     news_list.append(news_item)
@@ -196,6 +233,70 @@ class NaverStockNewsFetcher(BasePlaywrightFetcher):
             return 'negative'
         else:
             return 'neutral'
+
+    @staticmethod
+    def calculate_priority(title: str) -> int:
+        """
+        Phase 3.9: Calculate news priority score (1-5).
+
+        Higher scores indicate more important news.
+
+        Args:
+            title: News title
+
+        Returns:
+            Priority score (0-5, 0 = no priority keywords found)
+        """
+        max_priority = 0
+        title_lower = title.lower()
+
+        for priority, keywords in PRIORITY_KEYWORDS.items():
+            for keyword in keywords:
+                if keyword in title_lower:
+                    max_priority = max(max_priority, priority)
+
+        return max_priority
+
+    def _deduplicate_news(self, news_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Phase 3.9: Remove duplicate news based on title similarity.
+
+        Uses SequenceMatcher for fuzzy matching.
+
+        Args:
+            news_list: List of news items
+
+        Returns:
+            Deduplicated list
+        """
+        unique_news = []
+
+        for news in news_list:
+            title = news.get('title', '')
+            if not title:
+                continue
+
+            # Check similarity against seen titles
+            is_duplicate = False
+            for seen_title in self._seen_titles:
+                similarity = SequenceMatcher(None, title, seen_title).ratio()
+                if similarity >= SIMILARITY_THRESHOLD:
+                    is_duplicate = True
+                    self.logger.debug(
+                        f"Duplicate detected: '{title[:30]}...' "
+                        f"similar to '{seen_title[:30]}...' ({similarity:.2f})"
+                    )
+                    break
+
+            if not is_duplicate:
+                self._seen_titles.add(title)
+                unique_news.append(news)
+
+        return unique_news
+
+    def clear_seen_titles(self):
+        """Clear the seen titles cache (useful between sessions)."""
+        self._seen_titles.clear()
 
     async def validate_structure(self) -> bool:
         """
