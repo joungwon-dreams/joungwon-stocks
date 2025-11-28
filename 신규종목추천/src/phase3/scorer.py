@@ -226,10 +226,11 @@ class ValueScorer:
 
 
 class ReportGenerator:
-    """추천 리포트 생성기"""
+    """추천 리포트 PDF 생성기 (NewStockPDFGenerator 래퍼)"""
 
     def __init__(self, output_dir: str = None):
-        self.output_dir = output_dir or settings.report_dir
+        # PDF 출력 경로 고정
+        self.output_dir = "/Users/wonny/Dev/joungwon.stocks/reports/new_stock/daily"
 
     async def generate_markdown(
         self,
@@ -237,94 +238,257 @@ class ReportGenerator:
         batch_id: str = None
     ) -> str:
         """
-        마크다운 형식 리포트 생성
+        PDF 형식 리포트 생성 (NewStockPDFGenerator 사용)
 
         Returns:
             리포트 파일 경로
         """
-        today = datetime.now().strftime('%Y-%m-%d')
-        time_str = datetime.now().strftime('%H%M')
-
-        report = f"""# 신규종목추천 리포트
-
-**생성일시**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-**배치 ID**: {batch_id or 'N/A'}
-**추천 종목 수**: {len(results)}개
-
----
-
-## 📊 Top 10 추천 종목
-
-| 순위 | 종목 | AI등급 | 최종점수 | 정량 | 정성 | 핵심 포인트 |
-|:---:|:---:|:---:|:---:|:---:|:---:|:---|
-"""
-
-        for r in results[:10]:
-            report += f"| {r['rank_in_batch']} | {r.get('stock_name', r['stock_code'])} | **{r.get('ai_grade', 'N/A')}** | {r['final_score']:.1f} | {r['quant_score']:.1f} | {r['qual_score']:.1f} | {r.get('ai_key_material', '')[:30]}... |\n"
-
-        report += """
----
-
-## 📈 S/A 등급 종목 상세
-
-"""
-
-        for r in results:
-            if r.get('ai_grade') in ['S', 'A']:
-                report += f"""### {r.get('stock_name', r['stock_code'])} ({r['stock_code']})
-
-- **AI 등급**: {r.get('ai_grade')} (신뢰도: {r.get('ai_confidence', 0):.0%})
-- **최종 점수**: {r['final_score']:.1f}점 (정량 {r['quant_score']:.1f} + 정성 {r['qual_score']:.1f})
-
-**정량 지표**
-- PBR: {r.get('pbr', 'N/A')}, PER: {r.get('per', 'N/A')}
-- RSI(14): {r.get('rsi_14', 'N/A')}
-- 연기금 순매수: {r.get('pension_net_buy', 0):,}원
-- 기관 순매수: {r.get('institution_net_buy', 0):,}원
-
-**AI 분석**
-- 핵심 재료: {r.get('ai_key_material', 'N/A')}
-- 정책 관련: {r.get('ai_policy_alignment', 'N/A')}
-- 매수 포인트: {r.get('ai_buy_point', 'N/A')}
-- 리스크: {r.get('ai_risk_factor', 'N/A')}
-
----
-
-"""
-
-        report += f"""
-## 📊 등급 분포
-
-| 등급 | 종목 수 | 비율 |
-|:---:|:---:|:---:|
-"""
-
-        # 등급별 집계
-        grade_counts = {}
-        for r in results:
-            grade = r.get('ai_grade', 'N/A')
-            grade_counts[grade] = grade_counts.get(grade, 0) + 1
-
-        for grade in ['S', 'A', 'B', 'C', 'D']:
-            count = grade_counts.get(grade, 0)
-            pct = (count / len(results) * 100) if results else 0
-            report += f"| {grade} | {count} | {pct:.1f}% |\n"
-
-        report += f"""
----
-
-*본 리포트는 AI 분석 결과이며, 투자 판단은 본인 책임입니다.*
-"""
-
-        # 파일 저장
         import os
+        from 신규종목추천.src.reports.pdf_generator import NewStockPDFGenerator
+
         os.makedirs(self.output_dir, exist_ok=True)
-        filepath = f"{self.output_dir}/추천종목_{today}_{time_str}.md"
+        filepath = f"{self.output_dir}/신규종목추천.pdf"
 
-        with open(filepath, 'w', encoding='utf-8') as f:
-            f.write(report)
+        # S/A 등급 종목 확인
+        top_picks = [r for r in results if r.get('ai_grade') in ['S', 'A']] if results else []
 
-        logger.info(f"리포트 생성: {filepath}")
+        if top_picks:
+            # S/A 등급 종목이 있으면 NewStockPDFGenerator로 상세 리포트 생성
+            try:
+                generator = NewStockPDFGenerator()
+                pdf_path = await generator.generate_daily_report(batch_id=batch_id)
+                if pdf_path:
+                    # 생성된 파일을 고정 경로로 복사
+                    import shutil
+                    shutil.copy(pdf_path, filepath)
+                    logger.info(f"PDF 리포트 생성 (상세): {filepath}")
+                    return filepath
+            except Exception as e:
+                logger.error(f"NewStockPDFGenerator 실패: {e}")
+
+        # S/A 등급이 없거나 생성 실패 시 추적 리포트 생성
+        return await self._generate_tracking_report(filepath, batch_id)
+
+    async def _generate_tracking_report(self, filepath: str, batch_id: str = None) -> str:
+        """신규 추천 없을 때 추적 종목 + 히스토리 리포트 생성"""
+        import os
+        from reportlab.lib import colors
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import mm, cm
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.ttfonts import TTFont
+
+        # 폰트 등록
+        font_path = "/Users/wonny/Dev/joungwon.stocks/fonts/NanumGothic.ttf"
+        font_bold_path = "/Users/wonny/Dev/joungwon.stocks/fonts/NanumGothicBold.ttf"
+
+        try:
+            if os.path.exists(font_path):
+                pdfmetrics.registerFont(TTFont('NanumGothic', font_path))
+            if os.path.exists(font_bold_path):
+                pdfmetrics.registerFont(TTFont('NanumGothicBold', font_bold_path))
+        except:
+            pass
+
+        doc = SimpleDocTemplate(
+            filepath,
+            pagesize=A4,
+            rightMargin=20*mm,
+            leftMargin=20*mm,
+            topMargin=20*mm,
+            bottomMargin=20*mm
+        )
+
+        # 스타일 설정
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Title'],
+            fontName='NanumGothicBold' if os.path.exists(font_bold_path) else 'Helvetica-Bold',
+            fontSize=24,
+            spaceAfter=12,
+            alignment=1
+        )
+        date_style = ParagraphStyle(
+            'DateStyle',
+            parent=styles['Normal'],
+            fontName='NanumGothic' if os.path.exists(font_path) else 'Helvetica',
+            fontSize=14,
+            spaceAfter=20,
+            alignment=1
+        )
+        heading_style = ParagraphStyle(
+            'CustomHeading',
+            parent=styles['Heading2'],
+            fontName='NanumGothicBold' if os.path.exists(font_bold_path) else 'Helvetica-Bold',
+            fontSize=14,
+            spaceBefore=12,
+            spaceAfter=8
+        )
+        normal_style = ParagraphStyle(
+            'CustomNormal',
+            parent=styles['Normal'],
+            fontName='NanumGothic' if os.path.exists(font_path) else 'Helvetica',
+            fontSize=10,
+            spaceAfter=6
+        )
+        no_result_style = ParagraphStyle(
+            'NoResultStyle',
+            parent=styles['Normal'],
+            fontName='NanumGothicBold' if os.path.exists(font_bold_path) else 'Helvetica-Bold',
+            fontSize=18,
+            spaceAfter=20,
+            alignment=1,
+            textColor=colors.gray
+        )
+
+        story = []
+        now = datetime.now()
+
+        # 제목
+        story.append(Paragraph("신규종목추천 리포트", title_style))
+        story.append(Paragraph(f"{now.strftime('%Y-%m-%d %H:%M:%S')}", date_style))
+        story.append(Spacer(1, 10*mm))
+        story.append(Paragraph("오늘 신규추천종목 없음", no_result_style))
+        story.append(Spacer(1, 10*mm))
+
+        # 추적 중인 종목 조회 (최근 7일 S/A 등급)
+        tracking_query = """
+        SELECT DISTINCT ON (sr.stock_code)
+            sr.id, sr.stock_code, sr.stock_name, sr.recommendation_date,
+            sr.ai_grade, sr.final_score, sr.close_price, sr.ai_key_material
+        FROM smart_recommendations sr
+        WHERE sr.ai_grade IN ('S', 'A')
+          AND sr.recommendation_date >= CURRENT_DATE - INTERVAL '7 days'
+        ORDER BY sr.stock_code, sr.recommendation_date DESC
+        """
+        tracking_stocks = await db.fetch(tracking_query)
+
+        if tracking_stocks:
+            story.append(Paragraph("추적 중인 종목 (최근 7일 S/A등급)", heading_style))
+
+            for t in tracking_stocks:
+                # 종목 헤더
+                grade_color = '#FF6B6B' if t['ai_grade'] == 'S' else '#4ECDC4'
+                header = f"<b>{t['stock_name']}</b> ({t['stock_code']}) - <font color='{grade_color}'><b>{t['ai_grade']}등급</b></font>"
+                story.append(Paragraph(header, normal_style))
+
+                # 기본 정보 테이블
+                rec_date = t['recommendation_date']
+                rec_date_str = rec_date.strftime('%Y-%m-%d') if hasattr(rec_date, 'strftime') else str(rec_date)
+
+                info_data = [
+                    ['추천일', rec_date_str, '추천가', f"{t['close_price']:,}원"],
+                    ['최종점수', f"{t['final_score']:.1f}", '', '']
+                ]
+                info_table = Table(info_data, colWidths=[50, 80, 50, 80])
+                info_table.setStyle(TableStyle([
+                    ('FONTNAME', (0, 0), (-1, -1), 'NanumGothic' if os.path.exists(font_path) else 'Helvetica'),
+                    ('FONTSIZE', (0, 0), (-1, -1), 9),
+                    ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#E8E8E8')),
+                    ('BACKGROUND', (2, 0), (2, -1), colors.HexColor('#E8E8E8')),
+                    ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+                ]))
+                story.append(info_table)
+
+                # 핵심재료
+                if t.get('ai_key_material'):
+                    story.append(Paragraph(f"<b>핵심재료:</b> {t['ai_key_material']}", normal_style))
+
+                # 일별 가격 추적
+                tracking_data_query = """
+                SELECT track_date, track_price, return_rate, days_held
+                FROM smart_price_tracking
+                WHERE recommendation_id = $1
+                ORDER BY track_date ASC
+                """
+                price_history = await db.fetch(tracking_data_query, t['id'])
+
+                if price_history:
+                    story.append(Paragraph("<b>일별 가격 추적:</b>", normal_style))
+                    track_data = [['날짜', '가격', '수익률', '경과일']]
+                    for ph in price_history[-7:]:
+                        track_date = ph['track_date']
+                        track_date_str = track_date.strftime('%m/%d') if hasattr(track_date, 'strftime') else str(track_date)[:5]
+                        ret_color = 'red' if ph['return_rate'] < 0 else 'blue'
+                        track_data.append([
+                            track_date_str,
+                            f"{ph['track_price']:,}",
+                            f"{ph['return_rate']:+.2f}%",
+                            f"{ph['days_held']}일"
+                        ])
+
+                    track_table = Table(track_data, colWidths=[50, 70, 60, 40])
+                    track_table.setStyle(TableStyle([
+                        ('FONTNAME', (0, 0), (-1, -1), 'NanumGothic' if os.path.exists(font_path) else 'Helvetica'),
+                        ('FONTSIZE', (0, 0), (-1, -1), 8),
+                        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#D5E8D4')),
+                        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                        ('GRID', (0, 0), (-1, -1), 0.5, colors.lightgrey),
+                    ]))
+                    story.append(track_table)
+
+                story.append(Spacer(1, 5*mm))
+                story.append(Paragraph("─" * 50, normal_style))
+                story.append(Spacer(1, 3*mm))
+
+        # 히스토리 섹션
+        history_query = """
+        SELECT recommendation_date, stock_code, stock_name, ai_grade, final_score, rank_in_batch
+        FROM smart_recommendations
+        WHERE ai_grade IN ('S', 'A')
+          AND recommendation_date >= CURRENT_DATE - INTERVAL '14 days'
+        ORDER BY recommendation_date DESC, rank_in_batch
+        """
+        history = await db.fetch(history_query)
+
+        if history:
+            story.append(PageBreak())
+            story.append(Paragraph("추천 히스토리 (최근 14일)", heading_style))
+
+            history_data = [['추천일', '종목명', '등급', '점수']]
+            for h in history[:15]:
+                rec_date = h['recommendation_date']
+                rec_date_str = rec_date.strftime('%Y-%m-%d') if hasattr(rec_date, 'strftime') else str(rec_date)
+                history_data.append([
+                    rec_date_str,
+                    h['stock_name'][:10],
+                    h['ai_grade'],
+                    f"{h['final_score']:.1f}"
+                ])
+
+            history_table = Table(history_data, colWidths=[80, 90, 40, 50])
+            history_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#455A64')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'NanumGothicBold' if os.path.exists(font_bold_path) else 'Helvetica-Bold'),
+                ('FONTNAME', (0, 1), (-1, -1), 'NanumGothic' if os.path.exists(font_path) else 'Helvetica'),
+                ('FONTSIZE', (0, 0), (-1, -1), 9),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#ECEFF1')]),
+            ]))
+            story.append(history_table)
+
+        if not tracking_stocks and not history:
+            story.append(Paragraph("추천 히스토리가 없습니다.", normal_style))
+
+        # 면책조항
+        story.append(Spacer(1, 15*mm))
+        disclaimer_style = ParagraphStyle(
+            'Disclaimer',
+            parent=styles['Normal'],
+            fontName='NanumGothic' if os.path.exists(font_path) else 'Helvetica',
+            fontSize=8,
+            textColor=colors.gray,
+            alignment=1
+        )
+        story.append(Paragraph("본 리포트는 AI 분석 결과이며, 투자 판단은 본인 책임입니다.", disclaimer_style))
+
+        doc.build(story)
+        logger.info(f"추적 리포트 생성: {filepath}")
         return filepath
 
 

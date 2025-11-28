@@ -2,6 +2,27 @@
 Professional Stock Analysis PDF Report Generator
 Based on 'Sample.pdf' style (Generative AI Equity Research)
 
+================================================================================
+⚠️  CRITICAL: PDF 구조 변경 금지 (STRUCTURE LOCKED)
+================================================================================
+이 파일의 PDF 구조는 잠겨 있습니다. 구조 변경 전 반드시 확인하세요:
+
+1. 명세서 확인: docs/PDF_STRUCTURE_SPECIFICATION.md
+2. 사용자 승인 필요
+3. 변경 시 명세서 버전 업데이트 필수
+
+변경 금지 항목:
+- 섹션 순서 및 제목 (이모지 포함)
+- 테이블 컬럼 순서/너비
+- 색상 코드
+- 폰트 크기
+- 페이지 브레이크 위치
+- 차트 크기/비율
+
+Version: 1.0.0 (Locked)
+Last Structure Update: 2025-11-28
+================================================================================
+
 Report Structure (v1):
 1. Header / Investment Opinion / Key Metrics / Company Overview
 2. Investment Consensus / Analyst Targets / Recent 2-Week Trend
@@ -13,6 +34,7 @@ Report Structure (v1):
 """
 import asyncio
 import sys
+import io
 from datetime import datetime
 from pathlib import Path
 import matplotlib.pyplot as plt
@@ -36,6 +58,7 @@ from scripts.gemini.components.peer import generate_peer_comparison_chart, creat
 from scripts.gemini.components.consensus import create_consensus_detail_section, create_mini_opinion_bar
 from scripts.gemini.components.holding import create_holding_status_table 
 from scripts.gemini.components.realtime import generate_realtime_tick_chart, create_min_ticks_table_compact, create_stock_realtime_dashboard
+from scripts.gemini.components.portfolio_advisor import PortfolioAdvisor
 
 # Set Korean font for matplotlib
 rcParams['font.family'] = 'AppleGothic'
@@ -51,10 +74,10 @@ class PDFReportGenerator:
     def __init__(self, stock_code: str):
         self.stock_code = stock_code
         self.report_date = datetime.now().strftime('%Y년 %m월 %d일')
-        self.output_dir = Path('/Users/wonny/Dev/joungwon.stocks/reports')
+        self.output_dir = Path('/Users/wonny/Dev/joungwon.stocks/reports/holding_stock')
         self.output_dir.mkdir(exist_ok=True)
-        self.chart_dir = self.output_dir / 'charts'
-        self.chart_dir.mkdir(exist_ok=True)
+        # BytesIO 버퍼로 차트 저장 (파일 I/O 제거)
+        self.chart_buffers = {}
 
     async def fetch_all_data(self):
         """Fetch all required data from database, with realtime fallback for missing data"""
@@ -73,15 +96,19 @@ class PDFReportGenerator:
             print(f"   ⚠️ company_summary 없음 → 네이버에서 실시간 수집")
             await self._fetch_company_summary_from_naver()
 
-        # Consensus - from investment_consensus table (Naver Finance)
-        from scripts.naver.consensus_scraper import NaverConsensusScraper
-        self.consensus = await NaverConsensusScraper.get_from_db(self.stock_code)
-
-        # Fetch consensus from Naver if missing or outdated
-        if not self.consensus:
-            print(f"   ⚠️ consensus 없음 → 네이버에서 실시간 수집")
-            scraper = NaverConsensusScraper()
-            self.consensus = await scraper.fetch_and_save(self.stock_code)
+        # Consensus - from Naver Mobile API (fast, no Playwright needed)
+        consensus_fetcher = NaverConsensusFetcher()
+        consensus_api = await consensus_fetcher.fetch_consensus(self.stock_code)
+        
+        if consensus_api:
+            self.consensus = {
+                'target_price': consensus_api.get('target_price', ''),
+                'consensus_score': float(consensus_api.get('opinion', 3.0)) if consensus_api.get('opinion') else 3.0
+            }
+            print(f"   ✅ consensus API 수집 완료: 목표가 {self.consensus.get('target_price')}")
+        else:
+            self.consensus = None
+            print(f"   ⚠️ consensus 없음")
 
         # Financial statements (yearly)
         query = """
@@ -169,6 +196,17 @@ class PDFReportGenerator:
         query = "SELECT stock_code, stock_name, quantity, avg_buy_price FROM stock_assets WHERE stock_code = $1"
         self.holding = await db.fetchrow(query, self.stock_code)
 
+        # Claude Code Recommendation (신규종목추천 AI 분석 결과)
+        query = """
+            SELECT recommendation_date, recommended_price, recommendation_type,
+                   total_score, gemini_reasoning, note, created_at
+            FROM recommendation_history
+            WHERE stock_code = $1
+            ORDER BY recommendation_date DESC
+            LIMIT 1
+        """
+        self.recommendation = await db.fetchrow(query, self.stock_code)
+
         # Real-time Min Ticks (New) - with prev_price, prev_volume for comparison
         query = """
             SELECT
@@ -184,6 +222,50 @@ class PDFReportGenerator:
             LIMIT 60
         """
         self.min_ticks = await db.fetch(query, self.stock_code)
+
+        # AI Portfolio Feedback (NEW)
+        self.ai_feedback = None
+        if self.holding and self.holding.get('avg_buy_price'):
+            try:
+                advisor = PortfolioAdvisor()
+
+                # Get current price
+                current_p = 0
+                if self.min_ticks:
+                    current_p = self.min_ticks[0]['price']
+                elif self.ohlcv:
+                    current_p = self.ohlcv[0]['close']
+                elif self.fundamentals:
+                    current_p = self.fundamentals.get('current_price', 0) or 0
+
+                if current_p > 0:
+                    # Get investor data for last 5 days
+                    investor_data = None
+                    if self.investor_trends and len(self.investor_trends) >= 5:
+                        foreign_5d = sum(row['foreign'] for row in self.investor_trends[:5])
+                        institutional_5d = sum(row['institutional'] for row in self.investor_trends[:5])
+                        investor_data = {'foreign_5d': foreign_5d, 'institutional_5d': institutional_5d}
+
+                    # Get news summary (first 3 news titles)
+                    news_summary = None
+                    if self.news and len(self.news) > 0:
+                        news_titles = [n.get('title', '') for n in self.news[:3]]
+                        news_summary = ' / '.join(news_titles)
+
+                    # Process AI feedback
+                    self.ai_feedback = await advisor.process_daily_feedback(
+                        stock_code=self.stock_code,
+                        stock_name=self.stock_info['stock_name'],
+                        avg_buy_price=float(self.holding['avg_buy_price']),
+                        current_price=float(current_p),
+                        investor_data=investor_data,
+                        news_summary=news_summary
+                    )
+                    print(f"   ✅ AI Feedback generated: {self.ai_feedback.get('today_strategy', {}).get('recommendation', 'N/A')}")
+            except Exception as e:
+                print(f"   ⚠️ AI Feedback failed: {e}")
+                import traceback
+                traceback.print_exc()
 
         print(f"   ✅ Data fetched successfully")
         print(f"   DEBUG: Consensus keys: {self.consensus.keys() if self.consensus else 'None'}")
@@ -250,8 +332,8 @@ class PDFReportGenerator:
             self._generate_mini_2week_chart() 
         
         if hasattr(self, 'min_ticks') and self.min_ticks:
-            output_path = self.chart_dir / 'realtime_tick_chart.png'
-            generate_realtime_tick_chart(self.min_ticks, output_path)
+            # BytesIO 버퍼에 저장
+            self.chart_buffers['realtime_tick_chart'] = generate_realtime_tick_chart(self.min_ticks)
 
         if self.financials_yearly:
             self._generate_financial_chart()
@@ -312,7 +394,11 @@ class PDFReportGenerator:
         ax2.grid(True, alpha=0.3, linestyle='--')
 
         plt.tight_layout()
-        plt.savefig(self.chart_dir / 'price_trend.png', dpi=100, bbox_inches='tight')
+        # BytesIO 버퍼에 저장
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png', dpi=100, bbox_inches='tight')
+        buf.seek(0)
+        self.chart_buffers['price_trend'] = buf
         plt.close()
 
     def _generate_mini_2week_chart(self):
@@ -373,7 +459,11 @@ class PDFReportGenerator:
         plt.xticks(rotation=45)
         
         plt.tight_layout()
-        plt.savefig(self.chart_dir / 'mini_2week_chart.png', dpi=100, bbox_inches='tight')
+        # BytesIO 버퍼에 저장
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png', dpi=100, bbox_inches='tight')
+        buf.seek(0)
+        self.chart_buffers['mini_2week_chart'] = buf
         plt.close()
 
     def _generate_financial_chart(self):
@@ -399,7 +489,11 @@ class PDFReportGenerator:
         ax.grid(True, alpha=0.3, axis='y', linestyle='--')
 
         plt.tight_layout()
-        plt.savefig(self.chart_dir / 'financial_performance.png', dpi=100, bbox_inches='tight')
+        # BytesIO 버퍼에 저장
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png', dpi=100, bbox_inches='tight')
+        buf.seek(0)
+        self.chart_buffers['financial_performance'] = buf
         plt.close()
 
     def _generate_investor_chart(self):
@@ -451,7 +545,11 @@ class PDFReportGenerator:
         ax2.tick_params(axis='x', labelsize=8, rotation=0)
 
         plt.tight_layout()
-        plt.savefig(self.chart_dir / 'investor_trends.png', dpi=100, bbox_inches='tight')
+        # BytesIO 버퍼에 저장
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png', dpi=100, bbox_inches='tight')
+        buf.seek(0)
+        self.chart_buffers['investor_trends'] = buf
         plt.close()
 
     def _generate_investor_year_chart(self):
@@ -509,7 +607,11 @@ class PDFReportGenerator:
         ax2.tick_params(axis='x', labelsize=8, rotation=0)
 
         plt.tight_layout()
-        plt.savefig(self.chart_dir / 'investor_trends_year.png', dpi=100, bbox_inches='tight')
+        # BytesIO 버퍼에 저장
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png', dpi=100, bbox_inches='tight')
+        buf.seek(0)
+        self.chart_buffers['investor_trends_year'] = buf
         plt.close()
 
     def _generate_peer_chart(self):
@@ -545,22 +647,28 @@ class PDFReportGenerator:
                 'roe': safe_float(peer['roe'])
             })
             
-        output_path = self.chart_dir / 'peer_comparison.png'
-        generate_peer_comparison_chart(peers_data, output_path)
+        # BytesIO 버퍼에 저장
+        self.chart_buffers['peer_comparison'] = generate_peer_comparison_chart(peers_data)
 
     def draw_header(self, canvas, doc):
         """Draw header on every page"""
         canvas.saveState()
-        
+
         # Settings
         stock_title = f"{self.stock_info['stock_name']} ({self.stock_code})"
+
+        # Claude Code 추천 정보 추가
+        if hasattr(self, 'recommendation') and self.recommendation:
+            rec_date = self.recommendation['recommendation_date'].strftime('%Y-%m-%d')
+            stock_title += f" - Claude Code 추천 ({rec_date})"
+
         now = datetime.now()
         date_str = now.strftime("%Y/%m/%d")
         time_str = now.strftime("%H:%M:%S")
         page_num = doc.page
-        
+
         # Draw Left: Stock Title
-        canvas.setFont('AppleGothic', 20)
+        canvas.setFont('AppleGothic', 16)  # 폰트 크기 조정 (긴 제목 대응)
         canvas.setFillColor(colors.black)
         canvas.drawString(1.5*cm, A4[1] - 2.0*cm, stock_title)
         
@@ -677,6 +785,9 @@ class PDFReportGenerator:
             target = self.consensus.get('target_price')
             current = self.fundamentals['current_price']
             if target and current:
+                # target_price가 문자열("106,375")일 수 있으므로 정수로 변환
+                if isinstance(target, str):
+                    target = int(target.replace(',', ''))
                 upside = ((target - current) / current) * 100
                 target_price_str = f"{target:,}" # KRW removed
 
@@ -786,7 +897,7 @@ class PDFReportGenerator:
 
 
         # 2-Week Price Trend Mini Section
-        if (self.chart_dir / 'mini_2week_chart.png').exists():
+        if 'mini_2week_chart' in self.chart_buffers:
             # Calculate change
             if len(self.ohlcv) >= 14:
                 price_2w_ago = self.ohlcv[13]['close']
@@ -798,12 +909,102 @@ class PDFReportGenerator:
                 # Increased font size for Change (2W) text
                 story.append(Paragraph(f"<b>Recent 2-Week Trend: <font size='12' color='{change_color}'>{change_text}</font></b>", normal_style))
                 story.append(Spacer(1, 0.2*cm))
-                story.append(Image(str(self.chart_dir / 'mini_2week_chart.png'), width=14*cm, height=5.5*cm))
+                if 'mini_2week_chart' in self.chart_buffers:
+                    story.append(Image(self.chart_buffers['mini_2week_chart'], width=14*cm, height=5.5*cm))
         
         # Double the spacer
         story.append(Spacer(1, 1.0*cm))
 
+        # --- AI Portfolio Feedback Section (NEW) ---
+        if hasattr(self, 'ai_feedback') and self.ai_feedback:
+            feedback = self.ai_feedback
+            today_strategy = feedback.get('today_strategy', {})
+            yesterday_review = feedback.get('yesterday_review')
 
+            # Section Title
+            story.append(Paragraph("🤖 AI Portfolio Feedback", heading_style))
+
+            # Recommendation colors and text
+            rec = today_strategy.get('recommendation', 'HOLD')
+            rec_map = {'BUY_MORE': ('추가 매수', '#4CAF50', '🟢'),
+                       'HOLD': ('관망', '#9E9E9E', '⚪'),
+                       'SELL': ('일부 매도', '#FF9800', '🟡'),
+                       'CUT_LOSS': ('손절', '#F44336', '🔴')}
+            rec_text, rec_color, rec_emoji = rec_map.get(rec, ('관망', '#9E9E9E', '⚪'))
+
+            # Today's Strategy Box
+            strategy_style = ParagraphStyle(
+                'strategy', fontName='AppleGothic', fontSize=11,
+                textColor=colors.HexColor(rec_color), leading=16
+            )
+            rationale_style = ParagraphStyle(
+                'rationale', fontName='AppleGothic', fontSize=9,
+                textColor=colors.HexColor('#424242'), leading=13
+            )
+            confidence = today_strategy.get('confidence', 0)
+            confidence_bar = '█' * int(confidence * 10) + '░' * (10 - int(confidence * 10))
+
+            strategy_data = [
+                [Paragraph(f"<b>[오늘의 전략: {rec_text}]</b> {rec_emoji}", strategy_style)],
+                [Paragraph(today_strategy.get('rationale', '분석 중...'), rationale_style)],
+                [Paragraph(f"신뢰도: {confidence_bar} {int(confidence*100)}%", rationale_style)]
+            ]
+
+            strategy_table = Table(strategy_data, colWidths=[16.5*cm])
+            strategy_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#E8F5E9') if rec == 'BUY_MORE'
+                 else colors.HexColor('#FFEBEE') if rec in ['SELL', 'CUT_LOSS']
+                 else colors.HexColor('#F5F5F5')),
+                ('TOPPADDING', (0, 0), (-1, -1), 8),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+                ('LEFTPADDING', (0, 0), (-1, -1), 10),
+                ('BOX', (0, 0), (-1, -1), 1, colors.HexColor('#E0E0E0')),
+            ]))
+            story.append(strategy_table)
+            story.append(Spacer(1, 0.3*cm))
+
+            # Yesterday's Review Box (if available)
+            if yesterday_review:
+                y_rec = yesterday_review.get('recommendation', 'HOLD')
+                y_rec_text = rec_map.get(y_rec, ('관망', '#9E9E9E', '⚪'))[0]
+                y_price = float(yesterday_review.get('market_price', 0))
+                next_price = float(yesterday_review.get('next_day_price', 0))
+                next_return = float(yesterday_review.get('next_day_return', 0))
+                was_correct = yesterday_review.get('was_correct', False)
+                report_date = yesterday_review.get('report_date')
+                date_str = report_date.strftime('%m.%d') if report_date else '어제'
+
+                result_emoji = '✅' if was_correct else '❌'
+                result_text = '적중' if was_correct else '실패'
+                return_color = 'red' if next_return > 0 else 'blue'
+
+                review_style = ParagraphStyle(
+                    'review', fontName='AppleGothic', fontSize=9,
+                    textColor=colors.HexColor('#555555'), leading=13
+                )
+
+                review_text = f"""<b>[어제 회고 ({date_str})]</b> {result_emoji}
+어제 의견: {y_rec_text}
+어제 종가: {int(y_price):,}원 → 오늘 종가: {int(next_price):,}원 (<font color='{return_color}'>{next_return:+.2f}%</font>)
+판정: {result_emoji} {result_text}"""
+
+                # Add AI comment if available
+                review_comment = today_strategy.get('review', '')
+                if review_comment:
+                    review_text += f"\nAI 코멘트: {review_comment}"
+
+                review_data = [[Paragraph(review_text, review_style)]]
+                review_table = Table(review_data, colWidths=[16.5*cm])
+                review_table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#FFF8E1') if was_correct else colors.HexColor('#FFEBEE')),
+                    ('TOPPADDING', (0, 0), (-1, -1), 8),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+                    ('LEFTPADDING', (0, 0), (-1, -1), 10),
+                    ('BOX', (0, 0), (-1, -1), 1, colors.HexColor('#E0E0E0')),
+                ]))
+                story.append(review_table)
+
+            story.append(Spacer(1, 0.5*cm))
 
         # --- Investment Consensus (Moved after 2-Week Chart) ---
         # 기준 날짜 (YY.MM.DD)
@@ -935,6 +1136,56 @@ class PDFReportGenerator:
                 story.append(holding_table)
                 story.append(Spacer(1, 0.2*cm))
 
+            # Claude Code 선정 정보 (recommendation_history 기반)
+            if hasattr(self, 'recommendation') and self.recommendation:
+                story.append(Spacer(1, 0.3*cm))
+                story.append(Paragraph("🤖 Claude Code 선정 정보", heading_style))
+
+                rec = self.recommendation
+                rec_date = rec['recommendation_date'].strftime('%Y-%m-%d') if rec['recommendation_date'] else '-'
+                rec_price = f"{int(rec['recommended_price']):,}원" if rec['recommended_price'] else '-'
+                rec_score = f"{float(rec['total_score']):.1f}점" if rec['total_score'] else '-'
+                rec_note = rec['note'] if rec['note'] else '-'
+
+                # 선정 정보 테이블
+                rec_data = [
+                    ['선정일', rec_date],
+                    ['매수가', rec_price],
+                    ['AI 점수', rec_score],
+                    ['AI 등급', rec_note],
+                ]
+
+                rec_table = Table(rec_data, colWidths=[4*cm, 12*cm])
+                rec_table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#E3F2FD')),
+                    ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#1565C0')),
+                    ('ALIGN', (0, 0), (0, -1), 'RIGHT'),
+                    ('ALIGN', (1, 0), (1, -1), 'LEFT'),
+                    ('FONTNAME', (0, 0), (-1, -1), 'AppleGothic'),
+                    ('FONTSIZE', (0, 0), (-1, -1), 9),
+                    ('TOPPADDING', (0, 0), (-1, -1), 6),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+                    ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#BBDEFB')),
+                ]))
+                story.append(rec_table)
+                story.append(Spacer(1, 0.2*cm))
+
+                # 추천 이유 (gemini_reasoning)
+                if rec['gemini_reasoning']:
+                    story.append(Paragraph("📝 추천 이유 (AI 분석)", ParagraphStyle(
+                        'ReasoningTitle', fontName='AppleGothic', fontSize=10,
+                        textColor=colors.HexColor('#1565C0'), spaceBefore=5, spaceAfter=5
+                    )))
+
+                    reasoning_text = rec['gemini_reasoning'].replace('\n', '<br/>')
+                    story.append(Paragraph(reasoning_text, ParagraphStyle(
+                        'ReasoningBody', fontName='AppleGothic', fontSize=9,
+                        textColor=colors.HexColor('#424242'), leading=14,
+                        leftIndent=10, rightIndent=10, spaceBefore=5, spaceAfter=10,
+                        backColor=colors.HexColor('#FAFAFA'), borderPadding=8
+                    )))
+                    story.append(Spacer(1, 0.3*cm))
+
         # Real-time Ticks (New Section - mimicking KEPCO dashboard)
         if hasattr(self, 'min_ticks') and self.min_ticks:
             story.append(Paragraph("⏱️ Real-time Ticks", heading_style))
@@ -949,14 +1200,14 @@ class PDFReportGenerator:
 
         # 4. Price Chart
         story.append(Paragraph("📈 Price Trend (주가 추이)", heading_style))
-        if (self.chart_dir / 'price_trend.png').exists():
-            story.append(Image(str(self.chart_dir / 'price_trend.png'), width=16*cm, height=9*cm))
+        if 'price_trend' in self.chart_buffers:
+            story.append(Image(self.chart_buffers['price_trend'], width=16*cm, height=9*cm))
         story.append(Spacer(1, 0.5*cm))
 
         # 5. Financial Performance
         story.append(Paragraph("💰 Financial Performance (재무 실적)", heading_style))
-        if (self.chart_dir / 'financial_performance.png').exists():
-            story.append(Image(str(self.chart_dir / 'financial_performance.png'), width=16*cm, height=8*cm))
+        if 'financial_performance' in self.chart_buffers:
+            story.append(Image(self.chart_buffers['financial_performance'], width=16*cm, height=8*cm))
         story.append(Spacer(1, 0.3*cm))
 
         # Financial Table
@@ -992,13 +1243,13 @@ class PDFReportGenerator:
 
         # 6. Investor Trends
         story.append(Paragraph("👥 Investor Trends (수급 동향)", heading_style))
-        if (self.chart_dir / 'investor_trends.png').exists():
-            story.append(Image(str(self.chart_dir / 'investor_trends.png'), width=16*cm, height=8*cm))
+        if 'investor_trends' in self.chart_buffers:
+            story.append(Image(self.chart_buffers['investor_trends'], width=16*cm, height=8*cm))
         story.append(Spacer(1, 0.3*cm))
 
         # Add 1-Year Cumulative Chart
-        if (self.chart_dir / 'investor_trends_year.png').exists():
-            story.append(Image(str(self.chart_dir / 'investor_trends_year.png'), width=16*cm, height=8*cm))
+        if 'investor_trends_year' in self.chart_buffers:
+            story.append(Image(self.chart_buffers['investor_trends_year'], width=16*cm, height=8*cm))
             story.append(Spacer(1, 0.3*cm))
 
         # 30-day summary
@@ -1016,17 +1267,17 @@ class PDFReportGenerator:
 
         # Peer Comparison
         story.append(Paragraph("동종업계 비교", heading_style))
-        if (self.chart_dir / 'peer_comparison.png').exists():
-            story.append(Image(str(self.chart_dir / 'peer_comparison.png'), width=16*cm, height=8*cm))
+        if 'peer_comparison' in self.chart_buffers:
+            story.append(Image(self.chart_buffers['peer_comparison'], width=16*cm, height=8*cm))
         story.append(Spacer(1, 0.2*cm))
 
         # Peer Table
         peer_data = [['기업명', 'PER', 'PBR', 'ROE(%)']]
         peer_data.append([
             self.stock_info['stock_name'],
-            f"{float(self.fundamentals['per']):.2f}",
-            f"{float(self.fundamentals['pbr']):.2f}",
-            f"{float(self.fundamentals['roe']):.2f}"
+            f"{float(self.fundamentals['per']):.2f}" if self.fundamentals.get('per') else '-',
+            f"{float(self.fundamentals['pbr']):.2f}" if self.fundamentals.get('pbr') else '-',
+            f"{float(self.fundamentals['roe']):.2f}" if self.fundamentals.get('roe') else '-'
         ])
         for peer in self.peers:
             peer_data.append([
@@ -1166,6 +1417,34 @@ class PDFReportGenerator:
 
 
 import argparse
+import os
+
+# Request stock file path
+REQUEST_STOCK_FILE = '/Users/wonny/Dev/joungwon.stocks/reports/request_stock/request_stock.md'
+
+
+def get_requested_stocks():
+    """request_stock.md에서 요청 종목명 읽기"""
+    if not os.path.exists(REQUEST_STOCK_FILE):
+        return []
+    with open(REQUEST_STOCK_FILE, 'r', encoding='utf-8') as f:
+        lines = f.readlines()
+    stocks = []
+    for line in lines:
+        line = line.strip()
+        if line and not line.startswith('#'):
+            stocks.append(line)
+    return stocks
+
+
+async def get_stock_code_by_name(name):
+    """종목명으로 종목코드 조회"""
+    result = await db.fetchrow('''
+        SELECT stock_code, stock_name FROM stocks
+        WHERE stock_name = $1
+    ''', name)
+    return result
+
 
 async def main():
     parser = argparse.ArgumentParser(description='Generate PDF Report')
@@ -1182,10 +1461,26 @@ async def main():
         else:
             # Get all holding stocks
             rows = await db.fetch("SELECT stock_code, stock_name FROM stock_assets ORDER BY stock_name")
-            stock_codes = [r['stock_code'] for r in rows]
+            holding_codes = [r['stock_code'] for r in rows]
+            
+            # Get requested stocks from request_stock.md
+            requested_names = get_requested_stocks()
+            requested_codes = []
+            for name in requested_names:
+                result = await get_stock_code_by_name(name)
+                if result:
+                    code = result['stock_code']
+                    # 보유종목에 없는 경우만 추가 (중복 방지)
+                    if code not in holding_codes:
+                        requested_codes.append(code)
+                        print(f"📌 요청종목 추가: {name} ({code})")
+                else:
+                    print(f"⚠️ 종목명 '{name}'을(를) 찾을 수 없습니다.")
+            
+            stock_codes = holding_codes + requested_codes
             
             print(f"\n{'='*60}")
-            print(f"🚀 Generating PDF Reports for {len(stock_codes)} Holdings")
+            print(f"🚀 Generating PDF Reports for {len(holding_codes)} Holdings + {len(requested_codes)} Requested")
             print(f"{'='*60}\n")
 
         for stock_code in stock_codes:

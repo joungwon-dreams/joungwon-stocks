@@ -1,0 +1,14 @@
+# Gemini ignore file
+# logs 폴더는 기본적으로 제외하되, claude.log와 gemini.log는 허용
+
+# 제외할 항목
+logs/*
+!logs/claude.log
+!logs/gemini.log
+
+# 기타 제외
+__pycache__/
+*.pyc
+.env
+*.dump
+backups/

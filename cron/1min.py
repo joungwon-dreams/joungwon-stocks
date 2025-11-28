@@ -8,7 +8,10 @@ Runs every minute via cron during trading hours (08:50-16:00 KST)
 + 수집 후 realtime_dashboard.pdf 자동 생성
 """
 import asyncio
+import os
 import sys
+import shutil
+import tempfile
 from datetime import datetime, time
 from pathlib import Path
 import asyncpg
@@ -264,9 +267,9 @@ class RealtimeDataCollector:
         try:
             print(f"\n📊 대시보드 PDF 생성 중...")
 
-            # 출력 디렉토리
-            output_dir = Path('/Users/wonny/Dev/joungwon.stocks/reports')
-            output_dir.mkdir(exist_ok=True)
+            # 출력 디렉토리 (holding_stock 폴더)
+            output_dir = Path('/Users/wonny/Dev/joungwon.stocks/reports/holding_stock')
+            output_dir.mkdir(parents=True, exist_ok=True)
 
             # 보유 종목 목록 조회
             holdings = await get_all_holdings()
@@ -294,9 +297,24 @@ class RealtimeDataCollector:
                 print("   ⚠️  수집된 데이터가 없습니다.")
                 return
 
-            # PDF 생성
+            # PDF 생성 (기존 PDF의 1,2페이지 포트폴리오 요약 유지)
             output_path = output_dir / 'realtime_dashboard.pdf'
-            create_pdf(all_data, str(output_path))
+
+            # 기존 PDF를 임시 파일로 복사 후 병합에 사용
+            holding_stock_pdf = None
+            temp_path = None
+            if output_path.exists():
+                temp_fd, temp_path = tempfile.mkstemp(suffix='.pdf')
+                os.close(temp_fd)
+                shutil.copy(output_path, temp_path)
+                holding_stock_pdf = temp_path
+                print(f"   📎 기존 PDF 1,2페이지 유지")
+
+            create_pdf(all_data, str(output_path), holding_stock_pdf)
+
+            # 임시 파일 정리
+            if temp_path and os.path.exists(temp_path):
+                os.remove(temp_path)
 
             print(f"   ✅ 대시보드 PDF 생성 완료: {output_path}")
 

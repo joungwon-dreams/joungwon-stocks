@@ -103,8 +103,9 @@ class SmartValueFinder:
             logger.info(f"[Phase 1A] 완료: {len(candidates_1a)}개 종목 ({phase1a_elapsed:.2f}초)")
 
             if not candidates_1a:
-                logger.warning("Phase 1A 필터 결과 없음 - 종료")
-                return {'success': False, 'error': 'No candidates from Phase 1A'}
+                logger.warning("Phase 1A 필터 결과 없음 - 빈 리포트 생성")
+                report_path = await self.reporter.generate_markdown([], batch_id)
+                return {'success': True, 'batch_id': batch_id, 'total_candidates': 0, 'report_path': report_path}
 
             # ========== Phase 1B: 기술적 지표 필터 ==========
             phase1b_start = datetime.now()
@@ -127,8 +128,9 @@ class SmartValueFinder:
             })
 
             if not candidates_1b:
-                logger.warning("Phase 1B 필터 결과 없음 - 종료")
-                return {'success': False, 'error': 'No candidates from Phase 1B'}
+                logger.warning("Phase 1B 필터 결과 없음 - 빈 리포트 생성")
+                report_path = await self.reporter.generate_markdown([], batch_id)
+                return {'success': True, 'batch_id': batch_id, 'total_candidates': 0, 'report_path': report_path}
 
             # ========== Phase 2A: 배치 데이터 수집 ==========
             phase2a_start = datetime.now()

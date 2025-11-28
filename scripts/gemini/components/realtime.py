@@ -1,3 +1,4 @@
+import io
 from reportlab.platypus import Table, TableStyle, Paragraph, Image, Spacer, Flowable
 from reportlab.lib import colors
 from reportlab.lib.units import cm
@@ -15,53 +16,66 @@ except Exception as e:
     print(f"Warning: Matplotlib font setup failed: {e}")
 
 
-def generate_realtime_tick_chart(ticks_data, output_path):
+def generate_realtime_tick_chart(ticks_data, output=None):
     """
     Generate a 1-minute tick chart.
+    If output is None, returns BytesIO buffer.
+    If output is a path, saves to file (backward compatible).
     """
     if not ticks_data:
         return None
-        
+
     # Sort by time ASC
     sorted_data = sorted(ticks_data, key=lambda x: x['timestamp'])
-    
+
     times = [row['timestamp'] for row in sorted_data]
     prices = [float(row['price']) for row in sorted_data]
     volumes = [int(row['volume']) for row in sorted_data]
-    
+
     if not times: return None
-    
+
     start_price = prices[0]
     end_price = prices[-1]
     color = '#D32F2F' if end_price >= start_price else '#1976D2' # Red/Blue
-    
+
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 4), height_ratios=[3, 1], sharex=True)
-    
+
     # Price Chart
     ax1.plot(times, prices, color=color, linewidth=1.5)
     ax1.fill_between(times, prices, min(prices), alpha=0.1, color=color)
     ax1.set_ylabel('Price')
     ax1.grid(True, alpha=0.3, linestyle='--')
-    
+
     # Volume Chart
     vol_colors = []
     prev_p = prices[0]
     for p in prices:
         vol_colors.append('#D32F2F' if p >= prev_p else '#1976D2')
         prev_p = p
-        
+
     ax2.bar(times, volumes, color=vol_colors, width=0.0005, alpha=0.6)
     ax2.set_ylabel('Vol')
     ax2.grid(True, alpha=0.3, linestyle='--')
-    
+
     # Formatting
     ax2.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
     plt.xticks(rotation=0)
     plt.tight_layout()
-    
-    plt.savefig(output_path)
+
+    # BytesIO 버퍼에 저장
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png', dpi=100, bbox_inches='tight')
+    buf.seek(0)
     plt.close()
-    return output_path
+
+    # 기존 파일 저장 방식도 지원 (backward compatible)
+    if output is not None:
+        with open(output, 'wb') as f:
+            f.write(buf.getvalue())
+        buf.seek(0)
+        return output
+
+    return buf
 
 def create_min_ticks_table_compact(ticks_data):
     """

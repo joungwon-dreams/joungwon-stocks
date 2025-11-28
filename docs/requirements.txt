@@ -39,7 +39,8 @@ pandas-ta==0.3.14b
 
 # AI & Machine Learning
 tensorflow==2.15.0
-# google-generativeai==0.3.2
+# google-generativeai==0.3.2  # Deprecated - using Claude API instead
+anthropic>=0.75.0  # Claude API for AI analysis
 transformers==4.36.2
 
 # Validation & Schemas

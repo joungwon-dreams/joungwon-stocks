@@ -1,0 +1,484 @@
+{
+    "quote": {
+        "symbolCode": "A034230",
+        "code": "KR7034230003",
+        "name": "파라다이스",
+        "market": "KOSPI",
+        "isIndex": false,
+        "openingPrice": 16750.0,
+        "highPrice": 16990.0,
+        "lowPrice": 16630.0,
+        "tradePrice": 16800.0,
+        "prevClosingPrice": 16870.0,
+        "change": "FALL",
+        "changePrice": -70.0,
+        "changeRate": -0.0041493776,
+        "accTradePrice": 3276422655.0,
+        "accTradeVolume": 195212,
+        "prevAccTradeVolume": 1278706,
+        "prevAccTradeVolumeChangeRate": 0.1526637085,
+        "basePrice": 16870.0,
+        "upperLimitPrice": 21900.0,
+        "lowerLimitPrice": 11810.0,
+        "date": "2025-11-27",
+        "tradeDate": "20251127",
+        "tradeTime": "095300",
+        "timestamp": 1764204780000,
+        "exchangeDate": "2025-11-27 09:53:00",
+        "exchangeLocalType": null,
+        "exchangeCountry": "KOREA",
+        "exchange": null,
+        "currency": "KRW",
+        "high52wPrice": 24000.0,
+        "high52wDate": "2025-09-23",
+        "low52wPrice": 9230.0,
+        "low52wDate": "2024-12-09",
+        "high50dPrice": 24000.0,
+        "low50dPrice": 14110.0,
+        "highInYearPrice": 24000.0,
+        "lowInYearPrice": 9230.0,
+        "earlyYearPrice": null,
+        "lastWeekPrice": null,
+        "sectorCode": null,
+        "sectorName": null,
+        "sectorChangeRate": 0.0,
+        "sectorPer": 23.87813,
+        "wicsSectorCode": "G253010",
+        "wicsSectorName": "호텔,레스토랑,레저",
+        "wicsSectorChangeRate": -0.0053879354,
+        "marketCap": 1552413391200,
+        "marketCapRank": 230,
+        "foreignRatio": 0.1069815724,
+        "prevForeignRatio": null,
+        "foreignOwnShares": 9885692,
+        "eps": 875.0,
+        "bps": 18941.0,
+        "dps": 150.0,
+        "per": 19.28,
+        "pbr": 0.89,
+        "companySummary": "동사는 1972년 설립되어 2024년 유가증권시장에 이전상장하고, 서울, 인천, 부산, 제주에 외국인전용 카지노를 운영 중임. 부산 해운대의 파라다이스호텔 부산과 미국 올랜도의 Embassy Suites Orlando Downtown을 운영하며, 인천 영종도 파라다이스시티 리조트에서 카지노, 호텔, 엔터테인먼트 시설 운영함. 문화체육관광부 장관의 허가로 사업을 영위하며, 카지노업영업준칙을 준수하여 운영 중임.",
+        "debtRatio": 0.81141,
+        "sales": 288247272470.0,
+        "operatingProfit": 39511532080.0,
+        "preTaxProfit": 39546051110.0,
+        "netIncome": 33430709760.0,
+        "askPrice": 16800,
+        "bidPrice": 16770,
+        "securityGroup": "STOCK",
+        "parValue": 500.0,
+        "listedShareCount": 92405559,
+        "listingDate": "2024-06-24",
+        "settleMonth": 12,
+        "capitalStock": 48034363500.0,
+        "isDelisted": false,
+        "stockState": {
+            "isBackDoorListed": false,
+            "marketWarning": "NONE",
+            "isTradingSuspended": false,
+            "parValueChange": "NONE",
+            "isUnfaithfulDisclosureDesignated": false,
+            "ex": "NONE",
+            "isAdministrativeIssue": false,
+            "revaluation": "NONE",
+            "isPreDelistingTrading": false,
+            "isLowLiquidity": false,
+            "isDelisted": false
+        },
+        "investorSummary": {
+            "individualStraightPurchasePrice": null,
+            "institutionStraightPurchasePrice": null,
+            "foreignStraightPurchasePrice": null,
+            "programStraightPurchasePrice": null
+        },
+        "signedChangeRate5daysAgo": null,
+        "signedChangeRate20daysAgo": null,
+        "signedChangeRate60daysAgo": null,
+        "signedChangeRate120daysAgo": null,
+        "signedChangeRate250daysAgo": null,
+        "prevClosingPrice5daysAgo": null,
+        "prevClosingPrice20daysAgo": null,
+        "prevClosingPrice60daysAgo": null,
+        "prevClosingPrice120daysAgo": null,
+        "prevClosingPrice250daysAgo": null,
+        "isClosing": false,
+        "marketStatus": "REGULAR_HOURS",
+        "changeStatistics": null,
+        "chartImageUrl": {
+            "day": "https://t1.daumcdn.net/media/finance/chart/kr/daumstock/d/A034230.png",
+            "month": "https://t1.daumcdn.net/media/finance/chart/kr/daumstock/m/A034230.png",
+            "month3": "https://t1.daumcdn.net/media/finance/chart/kr/daumstock/m3/A034230.png",
+            "year": "https://t1.daumcdn.net/media/finance/chart/kr/daumstock/y/A034230.png",
+            "year3": "https://t1.daumcdn.net/media/finance/chart/kr/daumstock/y3/A034230.png"
+        },
+        "chartSlideImage": null
+    },
+    "supply": [
+        {
+            "date": "2025-10-16",
+            "foreign": -71831.0,
+            "institutional": -25907.0,
+            "individual": 0.0
+        },
+        {
+            "date": "2025-10-17",
+            "foreign": 229354.0,
+            "institutional": -109609.0,
+            "individual": 0.0
+        },
+        {
+            "date": "2025-10-20",
+            "foreign": 12766.0,
+            "institutional": 168742.0,
+            "individual": 0.0
+        },
+        {
+            "date": "2025-10-21",
+            "foreign": -40556.0,
+            "institutional": -156039.0,
+            "individual": 0.0
+        },
+        {
+            "date": "2025-10-22",
+            "foreign": -129684.0,
+            "institutional": 69855.0,
+            "individual": 0.0
+        },
+        {
+            "date": "2025-10-23",
+            "foreign": 227633.0,
+            "institutional": -158914.0,
+            "individual": 0.0
+        },
+        {
+            "date": "2025-10-24",
+            "foreign": 258732.0,
+            "institutional": -162396.0,
+            "individual": 0.0
+        },
+        {
+            "date": "2025-10-27",
+            "foreign": 337789.0,
+            "institutional": -137351.0,
+            "individual": 0.0
+        },
+        {
+            "date": "2025-10-28",
+            "foreign": 44030.0,
+            "institutional": -11714.0,
+            "individual": 0.0
+        },
+        {
+            "date": "2025-10-29",
+            "foreign": -51404.0,
+            "institutional": -64240.0,
+            "individual": 0.0
+        },
+        {
+            "date": "2025-10-30",
+            "foreign": 259952.0,
+            "institutional": -183500.0,
+            "individual": 0.0
+        },
+        {
+            "date": "2025-10-31",
+            "foreign": 165937.0,
+            "institutional": -75768.0,
+            "individual": 0.0
+        },
+        {
+            "date": "2025-11-03",
+            "foreign": 386717.0,
+            "institutional": -168831.0,
+            "individual": 0.0
+        },
+        {
+            "date": "2025-11-04",
+            "foreign": 283507.0,
+            "institutional": 98717.0,
+            "individual": 0.0
+        },
+        {
+            "date": "2025-11-05",
+            "foreign": 99399.0,
+            "institutional": -143412.0,
+            "individual": 0.0
+        },
+        {
+            "date": "2025-11-06",
+            "foreign": 348441.0,
+            "institutional": -71940.0,
+            "individual": 0.0
+        },
+        {
+            "date": "2025-11-07",
+            "foreign": 581998.0,
+            "institutional": -205920.0,
+            "individual": 0.0
+        },
+        {
+            "date": "2025-11-10",
+            "foreign": 229787.0,
+            "institutional": -104768.0,
+            "individual": 0.0
+        },
+        {
+            "date": "2025-11-11",
+            "foreign": -1726842.0,
+            "institutional": -741296.0,
+            "individual": 0.0
+        },
+        {
+            "date": "2025-11-12",
+            "foreign": 282286.0,
+            "institutional": -3378.0,
+            "individual": 0.0
+        },
+        {
+            "date": "2025-11-13",
+            "foreign": 26803.0,
+            "institutional": -55292.0,
+            "individual": 0.0
+        },
+        {
+            "date": "2025-11-14",
+            "foreign": -110736.0,
+            "institutional": 146022.0,
+            "individual": 0.0
+        },
+        {
+            "date": "2025-11-17",
+            "foreign": -169574.0,
+            "institutional": 319701.0,
+            "individual": 0.0
+        },
+        {
+            "date": "2025-11-18",
+            "foreign": -324755.0,
+            "institutional": 296942.0,
+            "individual": 0.0
+        },
+        {
+            "date": "2025-11-19",
+            "foreign": -472385.0,
+            "institutional": 309739.0,
+            "individual": 0.0
+        },
+        {
+            "date": "2025-11-20",
+            "foreign": 122512.0,
+            "institutional": 1087998.0,
+            "individual": 0.0
+        },
+        {
+            "date": "2025-11-21",
+            "foreign": -671575.0,
+            "institutional": 602933.0,
+            "individual": 0.0
+        },
+        {
+            "date": "2025-11-24",
+            "foreign": -103329.0,
+            "institutional": -905.0,
+            "individual": 0.0
+        },
+        {
+            "date": "2025-11-25",
+            "foreign": 319847.0,
+            "institutional": -150130.0,
+            "individual": 0.0
+        },
+        {
+            "date": "2025-11-26",
+            "foreign": 207110.0,
+            "institutional": -401461.0,
+            "individual": 0.0
+        }
+    ],
+    "financials": {
+        "ratios": {
+            "per": 11.6602,
+            "pbr": 0.5068,
+            "roe": 0.0136,
+            "market_cap": 1552413391200,
+            "revenue": 288247272470.0,
+            "operating_profit": 39511532080.0,
+            "net_income": 33430709760.0
+        },
+        "peers": [
+            {
+                "name": "하이브",
+                "code": "352820",
+                "per": 858.815,
+                "pbr": 2.4978
+            },
+            {
+                "name": "강원랜드",
+                "code": "035250",
+                "per": 7.4779,
+                "pbr": 0.8241
+            },
+            {
+                "name": "CJ CGV",
+                "code": "079160",
+                "per": -4.5488,
+                "pbr": 1.2664
+            },
+            {
+                "name": "GKL",
+                "code": "114090",
+                "per": 20.6558,
+                "pbr": 1.6513
+            }
+        ]
+    },
+    "statements": {
+        "yearly": [
+            {
+                "date": "2024-12-01",
+                "revenue": 1072108965110.0,
+                "operating_profit": 136055145220.0,
+                "net_income": 110693395330.0
+            },
+            {
+                "date": "2023-12-01",
+                "revenue": 994199113640.0,
+                "operating_profit": 145770072270.0,
+                "net_income": 80184040630.0
+            },
+            {
+                "date": "2022-12-01",
+                "revenue": 587637410930.0,
+                "operating_profit": 10412544300.0,
+                "net_income": 15811360770.0
+            },
+            {
+                "date": "2021-12-01",
+                "revenue": 414466172830.0,
+                "operating_profit": -55245896580.0,
+                "net_income": -78564040250.0
+            }
+        ],
+        "quarterly": [
+            {
+                "date": "2025-09-01",
+                "revenue": 288247272470.0,
+                "operating_profit": 39511532080.0,
+                "net_income": 33430709760.0
+            },
+            {
+                "date": "2025-06-01",
+                "revenue": 284461115700.0,
+                "operating_profit": 42851813100.0,
+                "net_income": 32352075910.0
+            },
+            {
+                "date": "2025-03-01",
+                "revenue": 283304948530.0,
+                "operating_profit": 57275580030.0,
+                "net_income": 43103642950.0
+            },
+            {
+                "date": "2024-12-01",
+                "revenue": 265829500860.0,
+                "operating_profit": 19437190820.0,
+                "net_income": 36482558060.0
+            }
+        ]
+    },
+    "consensus": {
+        "target_price": "25,900",
+        "opinion": "4.00"
+    },
+    "news": [
+        {
+            "title": "파라다이스그룹, 미식 가이드 라 리스트 ‘이노베이션 어워드’ 특별...",
+            "collected_at": "2025-11-26 14:30",
+            "content": "파라다이스그룹, 미식 가이드 라 리스트 ‘이노베이션 어워드’ 특별...",
+            "url": "https://m.stock.naver.com/domestic/stock/034230/news/view/144/0001082485",
+            "source": "스포츠경향",
+            "sentiment": "중립",
+            "summary": "파라다이스그룹, 미식 가이드 라 리스트 ‘이노베이션 어워드’ 특별..."
+        },
+        {
+            "title": "BNK부산은행, VVIP고객 초청 ‘절세 전략 세미나’",
+            "collected_at": "2025-11-26 14:17",
+            "content": "BNK부산은행, VVIP고객 초청 ‘절세 전략 세미나’",
+            "url": "https://m.stock.naver.com/domestic/stock/034230/news/view/014/0005440209",
+            "source": "파이낸셜뉴스",
+            "sentiment": "중립",
+            "summary": "BNK부산은행, VVIP고객 초청 ‘절세 전략 세미나’"
+        },
+        {
+            "title": "중·일 갈등 수혜주가 우리나라 카지노라던데… [왜웃株]",
+            "collected_at": "2025-11-26 10:17",
+            "content": "중·일 갈등 수혜주가 우리나라 카지노라던데… [왜웃株]",
+            "url": "https://m.stock.naver.com/domestic/stock/034230/news/view/088/0000983393",
+            "source": "매일신문",
+            "sentiment": "중립",
+            "summary": "중·일 갈등 수혜주가 우리나라 카지노라던데… [왜웃株]"
+        },
+        {
+            "title": "세계적 DJ 아오키 초청 '크로마 키' 공연",
+            "collected_at": "2025-11-25 11:00",
+            "content": "세계적 DJ 아오키 초청 '크로마 키' 공연",
+            "url": "https://m.stock.naver.com/domestic/stock/034230/news/view/277/0005684173",
+            "source": "아시아경제",
+            "sentiment": "중립",
+            "summary": "세계적 DJ 아오키 초청 '크로마 키' 공연"
+        },
+        {
+            "title": "\" ‘중일갈등에 K-화장품, 여행산업 탄력 기대”…‘TIGER 화장품’·‘...",
+            "collected_at": "2025-11-24 10:16",
+            "content": "\" ‘중일갈등에 K-화장품, 여행산업 탄력 기대”…‘TIGER 화장품’·‘...",
+            "url": "https://m.stock.naver.com/domestic/stock/034230/news/view/018/0006170319",
+            "source": "이데일리",
+            "sentiment": "중립",
+            "summary": "\" ‘중일갈등에 K-화장품, 여행산업 탄력 기대”…‘TIGER 화장품’·‘..."
+        },
+        {
+            "title": "한화證 “파라다이스, 내년 5월 하얏트 소프트 오픈 효과 확인”",
+            "collected_at": "2025-11-24 08:45",
+            "content": "한화證 “파라다이스, 내년 5월 하얏트 소프트 오픈 효과 확인”",
+            "url": "https://m.stock.naver.com/domestic/stock/034230/news/view/366/0001125361",
+            "source": "조선비즈",
+            "sentiment": "중립",
+            "summary": "한화證 “파라다이스, 내년 5월 하얏트 소프트 오픈 효과 확인”"
+        },
+        {
+            "title": "중·일 갈등에 한국은 웃는다?…K뷰티·여행 ETF ‘훨훨’[펀드와치]",
+            "collected_at": "2025-11-23 09:33",
+            "content": "중·일 갈등에 한국은 웃는다?…K뷰티·여행 ETF ‘훨훨’[펀드와치]",
+            "url": "https://m.stock.naver.com/domestic/stock/034230/news/view/018/0006169851",
+            "source": "이데일리",
+            "sentiment": "중립",
+            "summary": "중·일 갈등에 한국은 웃는다?…K뷰티·여행 ETF ‘훨훨’[펀드와치]"
+        },
+        {
+            "title": "파라다이스, 서울에 플래그십 호텔 선보인다…최고급 브랜드 늘리는 ...",
+            "collected_at": "2025-11-23 08:51",
+            "content": "파라다이스, 서울에 플래그십 호텔 선보인다…최고급 브랜드 늘리는 ...",
+            "url": "https://m.stock.naver.com/domestic/stock/034230/news/view/016/0002561584",
+            "source": "헤럴드경제",
+            "sentiment": "중립",
+            "summary": "파라다이스, 서울에 플래그십 호텔 선보인다…최고급 브랜드 늘리는 ..."
+        },
+        {
+            "title": "中 관광객 증가에 호텔株 오르는데··· 남북 경협주 ‘아난티’는 ...",
+            "collected_at": "2025-11-22 06:02",
+            "content": "中 관광객 증가에 호텔株 오르는데··· 남북 경협주 ‘아난티’는 ...",
+            "url": "https://m.stock.naver.com/domestic/stock/034230/news/view/366/0001125090",
+            "source": "조선비즈",
+            "sentiment": "중립",
+            "summary": "中 관광객 증가에 호텔株 오르는데··· 남북 경협주 ‘아난티’는 ..."
+        },
+        {
+            "title": "'코스피 이전상장의 저주' 알테오젠이 깰까",
+            "collected_at": "2025-11-21 17:49",
+            "content": "'코스피 이전상장의 저주' 알테오젠이 깰까",
+            "url": "https://m.stock.naver.com/domestic/stock/034230/news/view/011/0004558758",
+            "source": "서울경제",
+            "sentiment": "중립",
+            "summary": "'코스피 이전상장의 저주' 알테오젠이 깰까"
+        }
+    ]
+}
