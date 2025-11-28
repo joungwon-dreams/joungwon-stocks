@@ -263,5 +263,31 @@ SLACK_WEBHOOK_URL=your_slack_webhook
 
 ---
 
+## Auto Git Commit (MANDATORY)
+
+**작업 완료 후 자동 커밋**: 모든 코드 변경 작업이 완료되면 사용자 지시 없이 자동으로 git commit을 수행합니다.
+
+```yaml
+TRIGGER: 작업 완료 시점 (코드 수정, 파일 생성/삭제, 설정 변경 등)
+ACTION: git add -A && git commit -m "커밋 메시지"
+FORMAT: |
+  type: 간단한 제목
+
+  - 변경 내용 1
+  - 변경 내용 2
+
+  🤖 Generated with [Claude Code](https://claude.com/claude-code)
+  Co-Authored-By: Claude <noreply@anthropic.com>
+```
+
+**커밋 타입**:
+- `feat`: 새 기능
+- `fix`: 버그 수정
+- `refactor`: 리팩토링
+- `docs`: 문서 변경
+- `chore`: 설정/유지보수
+
+---
+
 **Last Updated**: 2025-11-28
 **Project Start**: 2025-11-24
