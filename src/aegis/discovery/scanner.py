@@ -36,6 +36,10 @@ class CandidateStock:
     ma_60: float = 0.0
     golden_cross: bool = False
 
+    # 눌림목 판단용
+    prev_volume: int = 0  # 전일 거래량
+    is_pullback: bool = False  # 눌림목 여부
+
     # Supply/Demand
     foreigner_net: int = 0
     institution_net: int = 0
@@ -222,6 +226,28 @@ class MarketScanner:
                 prev_ma_20 = df['종가'].rolling(20).mean().iloc[-2] if len(df) > 20 else ma_20
                 golden_cross = (prev_ma_5 <= prev_ma_20) and (ma_5 > ma_20)
 
+                # 전일 거래량 (눌림목 판단용)
+                prev_volume = int(df['거래량'].iloc[-2]) if len(df) > 1 else stock["volume"]
+
+                # === Phase 9.5 과열 방지 필터 ===
+                # 현재가가 20일선 대비 115% 이상이면 제외
+                if ma_20 > 0 and stock["current_price"] > ma_20 * 1.15:
+                    continue  # 과열 종목 제외
+
+                # RSI 75 이상이면 제외
+                if rsi > 75:
+                    continue  # 과매수 종목 제외
+
+                # === 눌림목 판단 ===
+                # 상승 추세(MA5 > MA20) 중 단기 조정
+                # 거래량 60% 미만 & 변동폭 -2% ~ +1%
+                is_pullback = False
+                if ma_5 > ma_20:  # 상승 추세
+                    volume_ratio = stock["volume"] / prev_volume if prev_volume > 0 else 1.0
+                    change_rate = stock["change_rate"]
+                    if volume_ratio < 0.6 and -2.0 <= change_rate <= 1.0:
+                        is_pullback = True
+
                 candidate = CandidateStock(
                     code=code,
                     name=stock["name"],
@@ -234,7 +260,9 @@ class MarketScanner:
                     ma_5=ma_5,
                     ma_20=ma_20,
                     ma_60=ma_60,
-                    golden_cross=golden_cross
+                    golden_cross=golden_cross,
+                    prev_volume=prev_volume,
+                    is_pullback=is_pullback
                 )
                 candidates.append(candidate)
 
@@ -311,6 +339,11 @@ class MarketScanner:
             if c.golden_cross:
                 tech_score += 1.0
                 reasons.append("골든크로스")
+
+            # === Phase 9.5 눌림목 가산점 ===
+            if c.is_pullback:
+                tech_score += 0.5
+                reasons.append("눌림목 매수기회")
 
             c.technical_score = tech_score
 

@@ -64,8 +64,8 @@ async def run_scan(
         await tracker.disconnect()
         print("   💾 DB 저장 완료")
 
-    # PDF 생성
-    if generate_pdf and results:
+    # PDF 생성 (Phase 9.5: 추천 없어도 생성)
+    if generate_pdf:
         pdf_path = await generate_enhanced_pdf(finder, tracker if save_to_db else None)
         print(f"📄 PDF 저장: {pdf_path}")
 
@@ -223,47 +223,82 @@ async def generate_enhanced_pdf(finder: OpportunityFinder, tracker: Recommendati
     elements.append(Spacer(1, 8*mm))
 
     # ========== 섹션 2: 추천 종목 테이블 ==========
-    elements.append(Paragraph("📊 오늘의 추천 종목 (Top 5)", heading_style))
+    # Phase 9.5: 추천 종목이 없으면 휴식 메시지
+    if not finder.results:
+        elements.append(Paragraph("📊 오늘의 추천 종목", heading_style))
+        elements.append(Spacer(1, 20*mm))
 
-    table_data = [['순위', '종목명', '현재가', '등락률', 'AEGIS', '핵심 근거']]
-    for i, r in enumerate(finder.results[:5], 1):
-        reasons = ", ".join(r.key_reasons[:2]) if r.key_reasons else "-"
-        change_str = f"+{r.change_rate:.1f}%" if r.change_rate >= 0 else f"{r.change_rate:.1f}%"
-        table_data.append([
-            str(i),
-            r.name,
-            f"{r.current_price:,}",
-            change_str,
-            f"{r.aegis_score:.1f}",
-            reasons[:20]
-        ])
+        no_rec_style = ParagraphStyle(
+            'NoRecommendation',
+            parent=styles['Normal'],
+            fontName=font_name,
+            fontSize=14,
+            alignment=1,  # CENTER
+            textColor=colors.HexColor('#666666'),
+            spaceAfter=10
+        )
+        elements.append(Paragraph("⚠️ 오늘은 추천 종목이 없습니다.", no_rec_style))
+        elements.append(Paragraph("휴식도 투자입니다.", no_rec_style))
+        elements.append(Spacer(1, 10*mm))
 
-    main_table = Table(table_data, colWidths=[12*mm, 35*mm, 28*mm, 22*mm, 18*mm, 55*mm])
-    main_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1a1a2e')),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('ALIGN', (1, 1), (1, -1), 'LEFT'),
-        ('ALIGN', (-1, 1), (-1, -1), 'LEFT'),
-        ('FONTNAME', (0, 0), (-1, -1), font_name),
-        ('FONTSIZE', (0, 0), (-1, 0), 10),
-        ('FONTSIZE', (0, 1), (-1, -1), 9),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
-        ('BOTTOMPADDING', (0, 1), (-1, -1), 6),
-        ('TOPPADDING', (0, 0), (-1, -1), 6),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cccccc')),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8f9fa')]),
-    ]))
-    elements.append(main_table)
-    elements.append(Spacer(1, 10*mm))
+        rest_msg = ParagraphStyle(
+            'RestMessage',
+            parent=styles['Normal'],
+            fontName=font_name,
+            fontSize=10,
+            alignment=1,
+            textColor=colors.HexColor('#888888')
+        )
+        elements.append(Paragraph(f"기준: AEGIS {finder.MIN_AEGIS_SCORE}점 이상 종목만 추천", rest_msg))
+        elements.append(Paragraph("억지로 추천하지 않고, 확실한 기회만 제공합니다.", rest_msg))
+        elements.append(Spacer(1, 20*mm))
+    else:
+        rec_count = len(finder.results)
+        elements.append(Paragraph(f"📊 오늘의 추천 종목 ({rec_count}개)", heading_style))
+
+        # Phase 9.5: 배지 컬럼 추가
+        table_data = [['순위', '배지', '종목명', '현재가', '등락률', 'AEGIS', '핵심 근거']]
+        for i, r in enumerate(finder.results, 1):
+            reasons = ", ".join(r.key_reasons[:2]) if r.key_reasons else "-"
+            change_str = f"+{r.change_rate:.1f}%" if r.change_rate >= 0 else f"{r.change_rate:.1f}%"
+            badge = r.badge if r.badge else "-"
+            table_data.append([
+                str(i),
+                badge,
+                r.name,
+                f"{r.current_price:,}",
+                change_str,
+                f"{r.aegis_score:.1f}",
+                reasons[:18]
+            ])
+
+        main_table = Table(table_data, colWidths=[10*mm, 22*mm, 32*mm, 26*mm, 20*mm, 16*mm, 44*mm])
+        main_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1a1a2e')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('ALIGN', (2, 1), (2, -1), 'LEFT'),
+            ('ALIGN', (-1, 1), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (-1, -1), font_name),
+            ('FONTSIZE', (0, 0), (-1, 0), 9),
+            ('FONTSIZE', (0, 1), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+            ('BOTTOMPADDING', (0, 1), (-1, -1), 5),
+            ('TOPPADDING', (0, 0), (-1, -1), 5),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cccccc')),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8f9fa')]),
+        ]))
+        elements.append(main_table)
+        elements.append(Spacer(1, 10*mm))
 
     # ========== 섹션 3: 종목별 상세 분석 ==========
     elements.append(Paragraph("📝 종목별 상세 분석", heading_style))
     elements.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor('#cccccc')))
 
     for i, r in enumerate(finder.results[:5], 1):
-        # 종목 헤더
-        header = f"▶ {i}. {r.name} ({r.code}) - {r.market}"
+        # 종목 헤더 (Phase 9.5: 배지 포함)
+        badge_str = f" {r.badge}" if r.badge else ""
+        header = f"▶ {i}. {r.name} ({r.code}) - {r.market}{badge_str}"
         elements.append(Paragraph(header, ParagraphStyle(
             'StockHeader',
             parent=normal_style,

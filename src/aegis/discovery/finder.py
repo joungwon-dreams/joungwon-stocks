@@ -45,6 +45,10 @@ class DiscoveryResult:
     # 핵심 근거
     key_reasons: List[str] = field(default_factory=list)
 
+    # Phase 9.5: 연속 추천 정보
+    consecutive_days: int = 0  # 연속 추천 일수
+    badge: str = ""  # 🔥 연속 포착, 👑 주도주 유력
+
     # 메타데이터
     analyzed_at: str = ""
 
@@ -69,9 +73,11 @@ class OpportunityFinder:
         market: 대상 시장 ("KOSPI", "KOSDAQ", "ALL")
     """
 
-    TOP_N = 5  # 최종 추천 종목 수
-    MIN_AEGIS_SCORE = 1.5  # AEGIS 최소 점수 (BUY 이상)
+    # Phase 9.5: Top N 폐지 → 점수 기준으로 변경
+    MIN_AEGIS_SCORE = 2.5  # AEGIS 분석 시 최소 점수
+    MIN_SCANNER_SCORE = 1.5  # Scanner만 사용 시 최소 점수
     MAX_DEEP_ANALYSIS = 30  # 심층 분석 최대 종목 수 (API 비용 절감)
+    CONSECUTIVE_BONUS = 0.3  # 연속 추천 가산점
 
     def __init__(self, market: str = "KOSPI"):
         """
@@ -112,17 +118,28 @@ class OpportunityFinder:
         # 3. AEGIS 심층 분석 또는 Scanner 점수만 사용
         if use_aegis:
             self.results = await self._deep_analyze_with_aegis(top_candidates)
+            min_score = self.MIN_AEGIS_SCORE
         else:
             self.results = self._convert_to_results(top_candidates)
+            min_score = self.MIN_SCANNER_SCORE
 
-        # 4. 최종 정렬 및 Top N 선정
+        # 4. Phase 9.5: 연속 추천 체크 및 가산점
+        self.results = await self._check_consecutive_recommendations(self.results)
+
+        # 5. Phase 9.5: 점수 기준 필터링 (Top N 폐지)
+        qualified_results = [
+            r for r in self.results
+            if r.aegis_score >= min_score
+        ]
+
+        # 점수순 정렬
         self.results = sorted(
-            self.results,
-            key=lambda x: x.aegis_score if use_aegis else x.scanner_score,
+            qualified_results,
+            key=lambda x: x.aegis_score,
             reverse=True
-        )[:self.TOP_N]
+        )
 
-        # 5. 리포트 생성
+        # 6. 리포트 생성
         self.report = DiscoveryReport(
             scan_date=self.scanner.scan_date or datetime.now().strftime("%Y%m%d"),
             total_scanned=len(await self.scanner._get_all_stocks()) if hasattr(self.scanner, '_get_all_stocks') else 2500,
@@ -132,8 +149,56 @@ class OpportunityFinder:
             generated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         )
 
-        print(f"\n✅ 최종 추천: {len(self.results)}개")
+        if self.results:
+            print(f"\n✅ 최종 추천: {len(self.results)}개 (기준: {min_score}점 이상)")
+        else:
+            print(f"\n⚠️ 추천 종목 없음 (기준 {min_score}점 미달)")
+
         return self.results
+
+    async def _check_consecutive_recommendations(
+        self,
+        results: List[DiscoveryResult]
+    ) -> List[DiscoveryResult]:
+        """연속 추천 체크 및 배지/가산점 부여"""
+        try:
+            import asyncpg
+            pool = await asyncpg.create_pool(
+                host='localhost', port=5432,
+                database='stock_investment_db', user='wonny',
+                min_size=1, max_size=2
+            )
+
+            for r in results:
+                # 최근 3일간 추천 이력 조회
+                rows = await pool.fetch("""
+                    SELECT DATE(recommended_at) as rec_date
+                    FROM new_stock_recommendations
+                    WHERE stock_code = $1
+                      AND recommended_at >= NOW() - INTERVAL '4 days'
+                      AND DATE(recommended_at) < CURRENT_DATE
+                    ORDER BY recommended_at DESC
+                """, r.code)
+
+                consecutive = len(rows)
+                r.consecutive_days = consecutive
+
+                # 배지 및 가산점 부여
+                if consecutive >= 3:
+                    r.badge = "👑 주도주 유력"
+                    r.aegis_score += self.CONSECUTIVE_BONUS * 2
+                    r.key_reasons.insert(0, "3일 연속 포착")
+                elif consecutive >= 2:
+                    r.badge = "🔥 연속 포착"
+                    r.aegis_score += self.CONSECUTIVE_BONUS
+                    r.key_reasons.insert(0, "2일 연속 포착")
+
+            await pool.close()
+
+        except Exception as e:
+            print(f"   ⚠️ 연속 추천 체크 실패: {e}")
+
+        return results
 
     async def _deep_analyze_with_aegis(
         self,
@@ -260,20 +325,21 @@ class OpportunityFinder:
     def get_summary(self) -> str:
         """결과 요약"""
         if not self.results:
-            return "발굴 결과 없음"
+            return "⚠️ 오늘은 추천 종목이 없습니다. 휴식도 투자입니다."
 
         lines = [
             "=" * 60,
             "🎯 AI Sniper - 추천 종목",
             "=" * 60,
-            f"{'순위':<4} {'종목명':<12} {'현재가':>10} {'AEGIS':>6} {'핵심 근거'}",
+            f"{'순위':<4} {'배지':<10} {'종목명':<12} {'현재가':>10} {'AEGIS':>6} {'핵심 근거'}",
             "-" * 60,
         ]
 
         for i, r in enumerate(self.results, 1):
+            badge = r.badge if r.badge else ""
             reasons = ", ".join(r.key_reasons[:3]) if r.key_reasons else "-"
             lines.append(
-                f"{i:<4} {r.name:<12} {r.current_price:>10,} {r.aegis_score:>6.1f} {reasons}"
+                f"{i:<4} {badge:<10} {r.name:<12} {r.current_price:>10,} {r.aegis_score:>6.1f} {reasons}"
             )
 
         lines.append("=" * 60)
