@@ -42,6 +42,8 @@ class PerformanceSummary:
     total_recommendations: int
     completed: int
     active: int
+    success_count: int  # 목표가 도달
+    failure_count: int  # 손절가 도달
     avg_return: float
     win_rate: float
     best_return: float
@@ -53,10 +55,13 @@ class RecommendationTracker:
     추천 종목 추적기
     - 추천 시 DB 저장
     - 매일 가격 추적
+    - 성공/실패 판정
     - 2주 후 성과 집계
     """
 
     TRACKING_DAYS = 14  # 2주간 추적
+    SUCCESS_THRESHOLD = 5.0  # +5% 도달 시 성공
+    FAILURE_THRESHOLD = -3.0  # -3% 도달 시 실패
 
     def __init__(self, db_config: Dict[str, Any] = None):
         self.db_config = db_config or {
@@ -218,9 +223,16 @@ class RecommendationTracker:
 
                 tracked += 1
 
+                # Phase 9.5: 성공/실패 판정 (목표가 또는 손절가 도달)
+                if cumulative_return >= self.SUCCESS_THRESHOLD:
+                    await self._complete_tracking(rec['id'], status='success')
+                    print(f"   🎯 {rec['stock_name']} 목표 달성! +{cumulative_return:.1f}%")
+                elif cumulative_return <= self.FAILURE_THRESHOLD:
+                    await self._complete_tracking(rec['id'], status='failure')
+                    print(f"   ⛔ {rec['stock_name']} 손절 도달: {cumulative_return:.1f}%")
                 # 2주 완료 체크
-                if day_number >= self.TRACKING_DAYS:
-                    await self._complete_tracking(rec['id'])
+                elif day_number >= self.TRACKING_DAYS:
+                    await self._complete_tracking(rec['id'], status='completed')
 
             except Exception as e:
                 print(f"   ⚠️ {rec['stock_name']} 추적 실패: {e}")
@@ -228,8 +240,8 @@ class RecommendationTracker:
         print(f"   ✅ {tracked}개 종목 추적 완료")
         return tracked
 
-    async def _complete_tracking(self, rec_id: int):
-        """추적 완료 처리"""
+    async def _complete_tracking(self, rec_id: int, status: str = 'completed'):
+        """추적 완료 처리 (status: success, failure, completed)"""
         # 최종 성과 계산
         stats = await self.pool.fetchrow("""
             SELECT
@@ -250,19 +262,20 @@ class RecommendationTracker:
         # 추천 테이블 업데이트
         await self.pool.execute("""
             UPDATE new_stock_recommendations
-            SET tracking_status = 'completed',
-                final_price = $2,
-                final_return = $3,
-                max_return = $4,
-                min_return = $5,
-                best_day = $6,
-                worst_day = $7
+            SET tracking_status = $2,
+                final_price = $3,
+                final_return = $4,
+                max_return = $5,
+                min_return = $6,
+                best_day = $7,
+                worst_day = $8
             WHERE id = $1
-        """, rec_id, stats['final_price'], stats['final_return'],
+        """, rec_id, status, stats['final_price'], stats['final_return'],
             stats['max_return'], stats['min_return'],
             stats['best_day'], stats['worst_day'])
 
-        print(f"   📈 추천 #{rec_id} 추적 완료: {stats['final_return']:.1f}%")
+        status_emoji = "🎯" if status == 'success' else "⛔" if status == 'failure' else "📈"
+        print(f"   {status_emoji} 추천 #{rec_id} 추적 완료 ({status}): {stats['final_return']:.1f}%")
 
     async def get_performance_summary(self, days: int = 14) -> PerformanceSummary:
         """
@@ -279,9 +292,11 @@ class RecommendationTracker:
         stats = await self.pool.fetchrow("""
             SELECT
                 COUNT(*) as total,
-                COUNT(CASE WHEN tracking_status = 'completed' THEN 1 END) as completed,
+                COUNT(CASE WHEN tracking_status != 'active' THEN 1 END) as completed,
                 COUNT(CASE WHEN tracking_status = 'active' THEN 1 END) as active,
-                AVG(final_return) as avg_return,
+                COUNT(CASE WHEN tracking_status = 'success' THEN 1 END) as success,
+                COUNT(CASE WHEN tracking_status = 'failure' THEN 1 END) as failure,
+                AVG(final_return) FILTER (WHERE tracking_status != 'active') as avg_return,
                 COUNT(CASE WHEN final_return > 0 THEN 1 END) as wins,
                 MAX(max_return) as best,
                 MIN(min_return) as worst
@@ -297,6 +312,8 @@ class RecommendationTracker:
             total_recommendations=stats['total'] or 0,
             completed=total_completed,
             active=stats['active'] or 0,
+            success_count=stats['success'] or 0,
+            failure_count=stats['failure'] or 0,
             avg_return=round(stats['avg_return'] or 0, 2),
             win_rate=round(win_rate, 1),
             best_return=round(stats['best'] or 0, 2),

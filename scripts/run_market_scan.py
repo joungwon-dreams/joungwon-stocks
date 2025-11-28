@@ -26,6 +26,7 @@ from io import BytesIO
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.aegis.discovery import OpportunityFinder, RecommendationTracker
+from src.aegis.discovery.reporter import InvestmentReporter
 
 
 async def run_scan(
@@ -64,9 +65,15 @@ async def run_scan(
         await tracker.disconnect()
         print("   💾 DB 저장 완료")
 
+    # AI 상세 리포트 생성 (추천 종목이 있을 때만)
+    ai_reports = []
+    if results:
+        reporter = InvestmentReporter()
+        ai_reports = await reporter.generate_batch_reports(results, max_reports=5)
+
     # PDF 생성 (Phase 9.5: 추천 없어도 생성)
     if generate_pdf:
-        pdf_path = await generate_enhanced_pdf(finder, tracker if save_to_db else None)
+        pdf_path = await generate_enhanced_pdf(finder, tracker if save_to_db else None, ai_reports)
         print(f"📄 PDF 저장: {pdf_path}")
 
     print("\n" + "=" * 60)
@@ -115,8 +122,8 @@ def save_json_report(finder: OpportunityFinder) -> str:
     return str(json_file)
 
 
-async def generate_enhanced_pdf(finder: OpportunityFinder, tracker: RecommendationTracker = None) -> str:
-    """개선된 PDF 리포트 생성 (3섹션)"""
+async def generate_enhanced_pdf(finder: OpportunityFinder, tracker: RecommendationTracker = None, ai_reports: list = None) -> str:
+    """개선된 PDF 리포트 생성 (Phase 9.5: 성과 현황 + AI 분석)"""
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -220,7 +227,60 @@ async def generate_enhanced_pdf(finder: OpportunityFinder, tracker: Recommendati
         ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cccccc')),
     ]))
     elements.append(summary_table)
-    elements.append(Spacer(1, 8*mm))
+    elements.append(Spacer(1, 5*mm))
+
+    # ========== 섹션 1.5: AEGIS 성과 현황 (최근 2주) ==========
+    if tracker:
+        try:
+            await tracker.connect()
+            summary = await tracker.get_performance_summary(days=14)
+
+            if summary.total_recommendations > 0:
+                elements.append(Paragraph("📈 AEGIS 추천 성과 (최근 2주)", ParagraphStyle(
+                    'PerformanceTitle',
+                    parent=normal_style,
+                    fontSize=11,
+                    fontName=font_name,
+                    spaceBefore=5,
+                    spaceAfter=5,
+                    textColor=colors.HexColor('#16213e')
+                )))
+
+                # 성과 박스
+                perf_data = [
+                    ['총 추천', '완료', '성공', '실패', '진행중', '승률', '평균수익'],
+                    [
+                        f'{summary.total_recommendations}건',
+                        f'{summary.completed}건',
+                        f'{summary.success_count}건',
+                        f'{summary.failure_count}건',
+                        f'{summary.active}건',
+                        f'{summary.win_rate:.0f}%',
+                        f'{summary.avg_return:+.1f}%'
+                    ]
+                ]
+                perf_table = Table(perf_data, colWidths=[24*mm, 24*mm, 24*mm, 24*mm, 24*mm, 24*mm, 26*mm])
+                perf_table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2d3436')),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                    ('FONTNAME', (0, 0), (-1, -1), font_name),
+                    ('FONTSIZE', (0, 0), (-1, 0), 8),
+                    ('FONTSIZE', (0, 1), (-1, 1), 10),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+                    ('TOPPADDING', (0, 0), (-1, -1), 5),
+                    ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cccccc')),
+                    # 승률/평균수익 색상
+                    ('TEXTCOLOR', (5, 1), (5, 1), colors.HexColor('#27ae60') if summary.win_rate >= 50 else colors.HexColor('#e74c3c')),
+                    ('TEXTCOLOR', (6, 1), (6, 1), colors.HexColor('#27ae60') if summary.avg_return >= 0 else colors.HexColor('#e74c3c')),
+                ]))
+                elements.append(perf_table)
+                elements.append(Spacer(1, 5*mm))
+
+        except Exception as e:
+            print(f"   ⚠️ 성과 현황 조회 실패: {e}")
+
+    elements.append(Spacer(1, 3*mm))
 
     # ========== 섹션 2: 추천 종목 테이블 ==========
     # Phase 9.5: 추천 종목이 없으면 휴식 메시지
@@ -291,39 +351,107 @@ async def generate_enhanced_pdf(finder: OpportunityFinder, tracker: Recommendati
         elements.append(main_table)
         elements.append(Spacer(1, 10*mm))
 
-    # ========== 섹션 3: 종목별 상세 분석 ==========
-    elements.append(Paragraph("📝 종목별 상세 분석", heading_style))
-    elements.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor('#cccccc')))
+    # ========== 섹션 3: AI 상세 분석 리포트 ==========
+    if ai_reports and finder.results:
+        elements.append(PageBreak())
+        elements.append(Paragraph("🤖 AI 상세 분석 리포트", heading_style))
+        elements.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor('#cccccc')))
 
-    for i, r in enumerate(finder.results[:5], 1):
-        # 종목 헤더 (Phase 9.5: 배지 포함)
-        badge_str = f" {r.badge}" if r.badge else ""
-        header = f"▶ {i}. {r.name} ({r.code}) - {r.market}{badge_str}"
-        elements.append(Paragraph(header, ParagraphStyle(
-            'StockHeader',
+        # AI 리포트 스타일
+        ai_section_style = ParagraphStyle(
+            'AISection',
             parent=normal_style,
-            fontSize=11,
+            fontSize=9,
             fontName=font_name,
-            spaceBefore=8,
-            spaceAfter=4,
-            textColor=colors.HexColor('#1a1a2e')
-        )))
+            spaceBefore=3,
+            spaceAfter=3,
+            textColor=colors.HexColor('#333333'),
+            leading=12
+        )
+        ai_header_style = ParagraphStyle(
+            'AIHeader',
+            parent=normal_style,
+            fontSize=9,
+            fontName=font_name,
+            textColor=colors.HexColor('#16213e'),
+            spaceBefore=5,
+            spaceAfter=2
+        )
 
-        # 가격 정보
-        change_str = f"+{r.change_rate:.1f}%" if r.change_rate >= 0 else f"{r.change_rate:.1f}%"
-        price_line = f"현재가: {r.current_price:,}원 | 등락률: {change_str} | AEGIS: {r.aegis_score:.1f}"
-        elements.append(Paragraph(price_line, small_style))
+        for i, (r, report) in enumerate(zip(finder.results[:5], ai_reports[:5]), 1):
+            # 종목 헤더 (배지 포함)
+            badge_str = f" {r.badge}" if r.badge else ""
+            header = f"▶ {i}. {r.name} ({r.code}){badge_str}"
+            elements.append(Paragraph(header, ParagraphStyle(
+                'StockHeader',
+                parent=normal_style,
+                fontSize=12,
+                fontName=font_name,
+                spaceBefore=10,
+                spaceAfter=5,
+                textColor=colors.HexColor('#1a1a2e')
+            )))
 
-        # 추천 근거
-        if r.key_reasons:
-            reasons_text = "🔍 추천 근거: " + " / ".join(r.key_reasons)
-            elements.append(Paragraph(reasons_text, small_style))
+            # 가격 & 전략 정보
+            change_str = f"+{r.change_rate:.1f}%" if r.change_rate >= 0 else f"{r.change_rate:.1f}%"
+            price_line = f"현재가: {r.current_price:,}원 ({change_str}) | 목표가: {report.target_price:,}원 | 손절가: {report.stop_loss:,}원"
+            elements.append(Paragraph(price_line, small_style))
+            elements.append(Spacer(1, 2*mm))
 
-        # 세부 점수
-        scores_text = f"기술점수: {r.technical_score:.1f} | 수급점수: {r.supply_score:.1f}"
-        elements.append(Paragraph(scores_text, small_style))
+            # 핵심 요약
+            if report.executive_summary:
+                elements.append(Paragraph("📌 핵심 요약", ai_header_style))
+                elements.append(Paragraph(report.executive_summary, ai_section_style))
 
-        elements.append(Spacer(1, 3*mm))
+            # 투자 포인트
+            if report.investment_points:
+                elements.append(Paragraph("💡 투자 포인트", ai_header_style))
+                for point in report.investment_points[:3]:
+                    elements.append(Paragraph(f"• {point}", ai_section_style))
+
+            # 시나리오
+            if report.bull_scenario or report.bear_scenario:
+                elements.append(Paragraph("🔮 시나리오", ai_header_style))
+                if report.bull_scenario:
+                    elements.append(Paragraph(f"[긍정] {report.bull_scenario[:100]}...", ai_section_style))
+                if report.bear_scenario:
+                    elements.append(Paragraph(f"[부정] {report.bear_scenario[:100]}...", ai_section_style))
+
+            # 매매 전략
+            if report.strategy:
+                elements.append(Paragraph("⚡ 매매 전략", ai_header_style))
+                elements.append(Paragraph(report.strategy[:150] + "..." if len(report.strategy) > 150 else report.strategy, ai_section_style))
+
+            elements.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor('#e0e0e0')))
+    else:
+        # AI 리포트가 없으면 기존 간략 분석
+        elements.append(Paragraph("📝 종목별 간략 분석", heading_style))
+        elements.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor('#cccccc')))
+
+        for i, r in enumerate(finder.results[:5], 1):
+            badge_str = f" {r.badge}" if r.badge else ""
+            header = f"▶ {i}. {r.name} ({r.code}) - {r.market}{badge_str}"
+            elements.append(Paragraph(header, ParagraphStyle(
+                'StockHeader',
+                parent=normal_style,
+                fontSize=11,
+                fontName=font_name,
+                spaceBefore=8,
+                spaceAfter=4,
+                textColor=colors.HexColor('#1a1a2e')
+            )))
+
+            change_str = f"+{r.change_rate:.1f}%" if r.change_rate >= 0 else f"{r.change_rate:.1f}%"
+            price_line = f"현재가: {r.current_price:,}원 | 등락률: {change_str} | AEGIS: {r.aegis_score:.1f}"
+            elements.append(Paragraph(price_line, small_style))
+
+            if r.key_reasons:
+                reasons_text = "🔍 추천 근거: " + " / ".join(r.key_reasons)
+                elements.append(Paragraph(reasons_text, small_style))
+
+            scores_text = f"기술점수: {r.technical_score:.1f} | 수급점수: {r.supply_score:.1f}"
+            elements.append(Paragraph(scores_text, small_style))
+            elements.append(Spacer(1, 3*mm))
 
     # ========== 섹션 4: 과거 추천 검증 ==========
     if tracker:

@@ -19,8 +19,8 @@ class GeminiClient:
         else:
             try:
                 genai.configure(api_key=settings.GEMINI_API_KEY)
-                self.model = genai.GenerativeModel('gemini-3-pro')
-                logger.info("Gemini AI client initialized (gemini-3-pro)")
+                self.model = genai.GenerativeModel('gemini-2.0-flash')
+                logger.info("Gemini AI client initialized (gemini-2.0-flash)")
             except Exception as e:
                 logger.error(f"Failed to initialize Gemini AI client: {e}")
                 self.model = None
