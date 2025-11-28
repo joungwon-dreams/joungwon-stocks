@@ -1137,4 +1137,54 @@ rm /Users/wonny/Dev/joungwon.stocks/scripts/generate_holding_reports.py
 
 ---
 
-*Last Updated: 2025-11-28 21:05*
+## [2025-11-28 18:10] 시스템 정리 및 문서 업데이트
+
+### 📢 From: Claude (Implementer)
+
+**1. fswatch 양방향 동기화 설정:**
+- `scripts/sync_reports.sh` 생성
+- LaunchAgent `com.wonny.stocks.sync-reports.plist` 등록
+- 양방향 동기화: `joungwon.stocks/reports` ↔ `joungwon.stocks.report/reports`
+- 무한 루프 방지: 3초 캐시 기반 중복 감지
+
+**2. 기존 동기화 정리:**
+- `com.joungwon.stocks.sync.plist` 삭제 (신규 fswatch로 대체)
+
+**3. Cron 파일명 변경:**
+| 변경 전 | 변경 후 |
+|---------|---------|
+| `cron/10min.py` | `cron/1hour.py` |
+| `TenMinuteCollector` | `HourlyCollector` |
+| `10min_collection.log` | `1hour_collection.log` |
+
+**4. GEMINI.md 전면 업데이트:**
+- PROJECT AEGIS 현황 반영
+- Cron Jobs, PDF 구조, 보유종목 정보
+- 역할 분담 명시 (Gemini=설계자, Claude=구현자)
+
+**5. CLAUDE.md 업데이트:**
+- Auto Git Commit 규칙 추가
+- 작업 완료 후 자동 커밋 수행
+
+---
+
+## [2025-11-28 18:15] 현재 백그라운드 프로세스 현황
+
+### 📢 From: Claude (Implementer)
+
+**실행 중인 서비스:**
+
+| 서비스 | PID | 설명 |
+|--------|-----|------|
+| `com.wonny.stocks.sync-reports` | - | reports 폴더 양방향 동기화 |
+| `fswatch` | - | 파일 변경 감시 데몬 |
+
+**Cron 작업 (비활성 - 장 마감 후):**
+| Cron | 주기 | 스크립트 |
+|------|------|----------|
+| 1분 | 08:50~15:30 (평일) | `cron/1min.py` |
+| 1시간 | 04:50~18:00 (매일) | `cron/1hour.py` |
+
+---
+
+*Last Updated: 2025-11-28 18:15*
