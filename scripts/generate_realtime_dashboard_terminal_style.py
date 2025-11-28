@@ -83,6 +83,56 @@ COLOR_RED = colors.red
 COLOR_BLUE = colors.blue
 COLOR_BLACK = colors.black
 
+# WillyDreams Style Colors (Phase 10)
+COLOR_PRIMARY = colors.HexColor("#FFD700")      # Yellow (포인트 컬러)
+COLOR_SECONDARY = colors.HexColor("#1A1A2E")    # Dark Navy
+COLOR_ACCENT = colors.HexColor("#16213E")       # Deep Blue
+COLOR_SUCCESS = colors.HexColor("#00D26A")      # Green
+COLOR_DANGER = colors.HexColor("#FF4757")       # Red
+COLOR_NEUTRAL = colors.HexColor("#F8F9FA")      # Light Gray
+
+
+def draw_willydreams_header(c, page_width, page_height):
+    """WillyDreams Style 헤더 그리기 (Phase 10)"""
+    c.saveState()
+
+    # 헤더 배경 (Dark Navy)
+    c.setFillColor(COLOR_SECONDARY)
+    c.rect(0, page_height - 40, page_width, 40, fill=True, stroke=False)
+
+    # "PROJECT AEGIS" 로고 (Yellow)
+    c.setFillColor(COLOR_PRIMARY)
+    c.setFont('AppleGothic', 16)
+    c.drawString(30, page_height - 27, "PROJECT AEGIS")
+
+    # 날짜 (White)
+    c.setFillColor(colors.white)
+    c.setFont('AppleGothic', 10)
+    date_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+    c.drawRightString(page_width - 30, page_height - 27, date_str)
+
+    # Yellow 악센트 라인
+    c.setStrokeColor(COLOR_PRIMARY)
+    c.setLineWidth(3)
+    c.line(0, page_height - 40, page_width, page_height - 40)
+
+    c.restoreState()
+
+
+def draw_willydreams_footer(c, page_width, page_num):
+    """WillyDreams Style 푸터 그리기 (Phase 10)"""
+    c.saveState()
+
+    # 푸터 텍스트
+    c.setFillColor(colors.HexColor("#6C757D"))
+    c.setFont('AppleGothic', 8)
+    c.drawString(30, 15, "WillyDreams | joungwon.dreams@gmail.com")
+
+    # 페이지 번호
+    c.drawRightString(page_width - 30, 15, f"Page {page_num}")
+
+    c.restoreState()
+
 # 데이터베이스 설정
 DB_CONFIG = {
     'host': 'localhost',
@@ -628,11 +678,16 @@ def create_aegis_dashboard_page(c, aegis_signals, signal_history, page_width, pa
     """
     font_name = 'AppleGothic'
     now = datetime.now()
-    y = page_height - 50
 
-    # 제목
+    # WillyDreams Style 헤더/푸터 적용 (Phase 10)
+    draw_willydreams_header(c, page_width, page_height)
+    draw_willydreams_footer(c, page_width, 3)
+
+    y = page_height - 80  # 헤더 공간 확보
+
+    # 제목 (Yellow 악센트 적용)
     c.setFont(font_name, 24)
-    c.setFillColor(COLOR_BLACK)
+    c.setFillColor(COLOR_PRIMARY)  # Yellow로 강조
     c.drawCentredString(page_width / 2, y, "PROJECT AEGIS Market Dashboard")
     y -= 25
 
@@ -907,11 +962,15 @@ def create_aegis_dashboard_page(c, aegis_signals, signal_history, page_width, pa
     c.showPage()
 
     # ===== Phase 7: AEGIS 성적표 페이지 (신호 검증 결과) =====
-    y = page_height - 50
+    # WillyDreams Style 헤더/푸터 적용 (Phase 10)
+    draw_willydreams_header(c, page_width, page_height)
+    draw_willydreams_footer(c, page_width, 4)
 
-    # 제목
+    y = page_height - 80  # 헤더 공간 확보
+
+    # 제목 (Yellow 악센트 적용)
     c.setFont(font_name, 24)
-    c.setFillColor(COLOR_BLACK)
+    c.setFillColor(COLOR_PRIMARY)  # Yellow로 강조
     c.drawCentredString(page_width / 2, y, "📊 AEGIS 성적표")
     y -= 25
 
@@ -1294,12 +1353,20 @@ def create_summary_pages(c, holdings_data, aegis_signals, page_width, page_heigh
     total_pnl_rate = (total_pnl / total_investment * 100) if total_investment > 0 else 0
 
     # ===== 1페이지: 포트폴리오 요약 =====
-    y = page_height - 50
+    # WillyDreams Style 헤더/푸터 적용 (Phase 10)
+    draw_willydreams_header(c, page_width, page_height)
+    draw_willydreams_footer(c, page_width, 1)
 
-    # 제목
+    y = page_height - 80  # 헤더 공간 확보
+
+    # 제목 (Yellow 밑줄 적용)
     c.setFont(font_name, 28)
     c.setFillColor(COLOR_BLACK)
     c.drawString(50, y, "보유종목 실시간 대시보드")
+    # Yellow 밑줄
+    c.setStrokeColor(COLOR_PRIMARY)
+    c.setLineWidth(3)
+    c.line(50, y - 5, 400, y - 5)
     y -= 30
 
     # 생성일시
@@ -1407,12 +1474,19 @@ def create_summary_pages(c, holdings_data, aegis_signals, page_width, page_heigh
     c.showPage()
 
     # ===== 2페이지: 포트폴리오 구성 차트 =====
-    y = page_height - 50
+    # WillyDreams Style 헤더/푸터 적용 (Phase 10)
+    draw_willydreams_header(c, page_width, page_height)
+    draw_willydreams_footer(c, page_width, 2)
 
-    # 제목
+    y = page_height - 80  # 헤더 공간 확보
+
+    # 제목 (Yellow 밑줄 적용)
     c.setFont(font_name, 20)
     c.setFillColor(COLOR_BLACK)
-    c.drawString(50, y, "포트폴리오 구성")
+    c.drawString(50, y, "📊 포트폴리오 구성")
+    c.setStrokeColor(COLOR_PRIMARY)
+    c.setLineWidth(3)
+    c.line(50, y - 5, 280, y - 5)
     y -= 40
 
     # 임시 디렉토리에 차트 저장
