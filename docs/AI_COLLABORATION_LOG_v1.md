@@ -1,26 +1,27 @@
-## [2025-11-29 09:00] Phase 7.5: 시스템 최적화 및 경량화 지시
+
+## [2025-11-29 10:00] Phase 8: 일일 매매 성과 분석 시스템 구축 지시
 
 ### 📢 To: Claude (Implementer)
 
-사용자의 노트북 환경을 고려하여 시스템 부하를 줄이는 **Phase 7.5: System Optimization & Lightweighting**을 긴급 진행합니다.
+사용자가 장 마감 후(15:40~) 하루의 매매 성과를 정리해주는 **"일일 리포트 시스템"**을 요청했습니다.
 
-**작업 내용:**
+**작업 지시:**
 
-1.  **Gemini API 호출 최적화 (`src/aegis/fusion/news_sentiment.py` 수정):**
-    -   모든 뉴스를 분석하지 마세요. 비용과 부하가 큽니다.
-    -   **Smart Filtering:** 제목에 '특징주', '공시', '단독', '속보' 등의 키워드가 있거나, 주요 언론사(연합, 이데일리 등)인 경우에만 Gemini API를 호출하도록 로직을 변경하세요.
-    -   나머지 뉴스는 키워드 기반 점수만 부여하고 API 호출은 생략(Skip)하세요.
+1.  **설계 문서 확인:** `docs/SYSTEM_EVOLUTION_DESIGN_SPEC.md`의 **Phase 8** 섹션을 확인하세요.
+2.  **DB 작업:** `sql/create_daily_summary.sql`을 작성하고 실행하여 `daily_summary` 테이블을 만드세요.
+3.  **분석 모듈 (`src/reporting/performance/analyzer.py`):**
+    -   `trade_history` 테이블에서 당일 거래 내역을 조회하여 실현 손익, 승률 등을 계산하세요.
+    -   `stock_assets` 테이블에서 현재 총 자산 가치를 계산하세요.
+4.  **리포트 생성 스크립트 (`scripts/generate_daily_performance_report.py`):**
+    -   위 분석 결과를 바탕으로 PDF 리포트를 생성하세요.
+    -   **구성:**
+        -   1p: 오늘의 손익 요약, 자산 추이 그래프
+        -   2p: 포트폴리오 파이차트, 매매 일지(Trade Log)
+        -   3p: 주간/월간 누적 성과 (캘린더 형태)
+    -   저장 경로: `reports/performance/YYYY-MM-DD_Daily_Report.pdf`
 
-2.  **DB 성능 최적화 (`sql/optimize_indexes.sql` 생성):**
-    -   `min_ticks` 테이블의 `(stock_code, timestamp)` 복합 인덱스 생성.
-    -   `stock_news` 테이블의 `(stock_code, published_at)` 인덱스 생성.
-    -   `aegis_signal_history` 조회 속도 개선을 위한 인덱스 추가.
-
-3.  **PDF 생성 최적화:**
-    -   `generate_realtime_dashboard_terminal_style.py`에서 차트 이미지 생성 시 DPI를 조절하거나, 불필요한 고해상도 렌더링을 줄이세요.
-
-**목표:** 시스템이 가볍고 빠르게 돌아가도록 군더더기를 제거하는 것입니다.
+**목표:** 사용자가 퇴근길에 "오늘 얼마 벌었는지"를 한눈에 볼 수 있는 깔끔한 리포트를 제공하는 것입니다.
 
 ---
 
-*Last Updated: 2025-11-29 09:00*
+*Last Updated: 2025-11-29 10:00*

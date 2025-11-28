@@ -439,6 +439,46 @@ This document outlines the detailed technical design for evolving the `joungwon.
 1.  Implement `SmartNewsFilter` in `NewsSentimentAnalyzer`.
 2.  Review and refactor fetchers to minimize `Playwright` usage.
 3.  Apply DB indexes and create a cleanup script.
+
+## 📐 Phase 8: Daily Performance Analysis & Reporting
+**Objective:** Automate the "End-of-Day Review". Generate a comprehensive PDF report tracking realized P&L, asset growth, and strategy performance.
+
+### 8.1 Architecture
+- **Module Path:** `src/reporting/performance/`
+- **Script:** `scripts/generate_daily_performance_report.py`
+- **Output:** `reports/performance/YYYY-MM-DD_Performance_Report.pdf`
+
+### 8.2 Detailed Specs
+
+#### A. Database Schema (`daily_summary`)
+- **Columns:**
+    -   `date` (PK)
+    -   `total_asset`: Total account value (Cash + Stock Eval).
+    -   `realized_pnl`: Daily realized profit/loss.
+    -   `unrealized_pnl`: Daily unrealized profit/loss.
+    -   `trade_count`: Number of trades executed.
+    -   `win_rate`: Win rate of closed trades today.
+    -   `best_trade`: (JSON) {symbol, pnl}
+    -   `worst_trade`: (JSON) {symbol, pnl}
+
+#### B. Report Structure (PDF)
+-   **Page 1: Daily Dashboard**
+    -   **Key Metrics:** Big numbers for Daily P&L, Win Rate, Total Asset.
+    -   **Charts:**
+        -   Intraday P&L Curve (if data available).
+        -   Asset Growth Chart (Last 30 days).
+    -   **Trade Log:** List of all trades executed today with P&L.
+-   **Page 2: Portfolio & Strategy Analysis**
+    -   **Portfolio Pie Chart:** Sector/Stock allocation.
+    -   **AEGIS Review:** Table comparing "Signals Generated" vs "Actual Price Move".
+-   **Page 3: Weekly/Monthly Summary**
+    -   Calendar view of daily P&L (Green/Red boxes).
+
+### 8.3 Action Plan
+1.  Create `daily_summary` table (`sql/create_daily_summary.sql`).
+2.  Implement `DailyPerformanceAnalyzer` to aggregate data from `trade_history` and `stock_assets`.
+3.  Develop `generate_daily_performance_report.py` using ReportLab and Matplotlib.
+4.  Schedule cron job for 16:00 KST.
 **Objective:** Full automation with a real-time web interface.
 
 ### 5.1 Architecture
