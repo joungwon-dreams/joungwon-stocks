@@ -5,6 +5,8 @@ watch_*.sh 스크립트의 터미널 출력 형식을 PDF로 변환
 """
 import asyncio
 import asyncpg
+import tempfile
+import os
 from datetime import datetime, timedelta
 from pathlib import Path
 from reportlab.lib import colors
@@ -13,13 +15,21 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.platypus import (
     SimpleDocTemplate, Table, TableStyle, Paragraph,
-    Spacer, PageBreak, Preformatted
+    Spacer, PageBreak, Preformatted, Image
 )
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.lib.enums import TA_LEFT
+from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT
 from reportlab.pdfgen import canvas
 from reportlab.lib.utils import simpleSplit
+import matplotlib
+matplotlib.use('Agg')  # 백엔드 설정 (GUI 없이)
+import matplotlib.pyplot as plt
+import matplotlib.font_manager as fm
+
+# matplotlib 한글 폰트 설정
+plt.rcParams['font.family'] = 'AppleGothic'
+plt.rcParams['axes.unicode_minus'] = False
 
 # 한글 폰트 등록
 FONT_PATH = '/System/Library/Fonts/Supplemental/AppleGothic.ttf'
@@ -337,6 +347,225 @@ def create_terminal_style_content(data):
     return "\n".join(lines)
 
 
+def create_summary_pages(c, holdings_data, page_width, page_height):
+    """
+    포트폴리오 요약 페이지 생성 (1-2페이지)
+    1페이지: 제목 + 포트폴리오 요약 테이블 + 종목별 상세 현황 테이블
+    2페이지: 포트폴리오 구성 차트 (파이차트 + 막대그래프)
+    """
+    font_name = 'AppleGothic'
+    now = datetime.now()
+
+    # 포트폴리오 데이터 계산
+    portfolio_data = []
+    total_investment = 0
+    total_evaluation = 0
+
+    for stock_code, stock_name, data in holdings_data:
+        if data['holding']:
+            qty = int(data['holding']['quantity'])
+            avg_price = int(data['holding']['avg_buy_price'])
+            current_price = data['current_price']
+            buy_amount = qty * avg_price
+            eval_amount = qty * current_price
+            pnl = eval_amount - buy_amount
+            pnl_rate = (pnl / buy_amount * 100) if buy_amount > 0 else 0
+
+            # AI 등급 (임시로 '-' 표시, 나중에 연동 가능)
+            ai_grade = data.get('ai_grade', '-')
+
+            portfolio_data.append({
+                'name': stock_name,
+                'code': stock_code,
+                'qty': qty,
+                'avg_price': avg_price,
+                'current_price': current_price,
+                'buy_amount': buy_amount,
+                'eval_amount': eval_amount,
+                'pnl': pnl,
+                'pnl_rate': pnl_rate,
+                'ai_grade': ai_grade
+            })
+
+            total_investment += buy_amount
+            total_evaluation += eval_amount
+
+    total_pnl = total_evaluation - total_investment
+    total_pnl_rate = (total_pnl / total_investment * 100) if total_investment > 0 else 0
+
+    # ===== 1페이지: 포트폴리오 요약 =====
+    y = page_height - 50
+
+    # 제목
+    c.setFont(font_name, 28)
+    c.setFillColor(COLOR_BLACK)
+    c.drawString(50, y, "보유종목 실시간 대시보드")
+    y -= 30
+
+    # 생성일시
+    c.setFont(font_name, 11)
+    c.setFillColor(colors.grey)
+    c.drawString(50, y, f"생성일시: {now.strftime('%Y-%m-%d %H:%M:%S')}")
+    y -= 40
+
+    # 포트폴리오 요약 제목
+    c.setFont(font_name, 16)
+    c.setFillColor(COLOR_BLACK)
+    c.drawString(50, y, "포트폴리오 요약")
+    y -= 25
+
+    # 요약 테이블
+    summary_data = [
+        ['총 투자금액', '총 평가금액', '총 손익', '수익률'],
+        [f'{total_investment:,}원', f'{total_evaluation:,}원',
+         f'{total_pnl:+,}원', f'{total_pnl_rate:+.2f}%']
+    ]
+
+    summary_table = Table(summary_data, colWidths=[170, 170, 170, 170])
+    summary_style = TableStyle([
+        ('FONTNAME', (0, 0), (-1, -1), font_name),
+        ('FONTSIZE', (0, 0), (-1, 0), 11),
+        ('FONTSIZE', (0, 1), (-1, 1), 14),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.Color(0.85, 0.95, 0.85)),  # 연한 녹색
+        ('TEXTCOLOR', (2, 1), (2, 1), COLOR_RED if total_pnl > 0 else COLOR_BLUE if total_pnl < 0 else COLOR_BLACK),
+        ('TEXTCOLOR', (3, 1), (3, 1), COLOR_RED if total_pnl_rate > 0 else COLOR_BLUE if total_pnl_rate < 0 else COLOR_BLACK),
+        ('GRID', (0, 0), (-1, -1), 1, colors.lightgrey),
+        ('BOX', (0, 0), (-1, -1), 1, colors.grey),
+    ])
+    summary_table.setStyle(summary_style)
+
+    table_width, table_height = summary_table.wrap(0, 0)
+    summary_table.drawOn(c, 50, y - table_height)
+    y -= table_height + 30
+
+    # 종목별 상세 현황 제목
+    c.setFont(font_name, 16)
+    c.setFillColor(COLOR_BLACK)
+    c.drawString(50, y, "종목별 상세 현황")
+    y -= 25
+
+    # 종목별 테이블
+    detail_header = ['종목명', '코드', '수량', '평단가', '현재가', '매수금액', '평가금액', '손익', '수익률', 'AI등급']
+    detail_data = [detail_header]
+
+    for item in portfolio_data:
+        pnl_str = f"{item['pnl']:+,}"
+        pnl_rate_str = f"{item['pnl_rate']:+.1f}%"
+
+        detail_data.append([
+            item['name'],
+            item['code'],
+            f"{item['qty']:,}",
+            f"{item['avg_price']:,}",
+            f"{item['current_price']:,}",
+            f"{item['buy_amount']:,}",
+            f"{item['eval_amount']:,}",
+            pnl_str,
+            pnl_rate_str,
+            item['ai_grade']
+        ])
+
+    col_widths = [85, 55, 40, 60, 60, 80, 80, 75, 55, 45]
+    detail_table = Table(detail_data, colWidths=col_widths)
+
+    # 테이블 스타일 (손익/수익률 색상 적용)
+    detail_style = [
+        ('FONTNAME', (0, 0), (-1, -1), font_name),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+        ('ALIGN', (0, 1), (0, -1), 'LEFT'),  # 종목명 좌측
+        ('ALIGN', (1, 1), (-1, -1), 'RIGHT'),  # 나머지 우측
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.Color(0.9, 0.9, 0.9)),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.lightgrey),
+        ('BOX', (0, 0), (-1, -1), 1, colors.grey),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.Color(0.97, 0.97, 0.97)]),
+    ]
+
+    # 손익/수익률 색상 적용
+    for i, item in enumerate(portfolio_data):
+        row = i + 1
+        if item['pnl'] > 0:
+            detail_style.append(('TEXTCOLOR', (7, row), (8, row), COLOR_RED))
+        elif item['pnl'] < 0:
+            detail_style.append(('TEXTCOLOR', (7, row), (8, row), COLOR_BLUE))
+
+    detail_table.setStyle(TableStyle(detail_style))
+    table_width, table_height = detail_table.wrap(0, 0)
+    detail_table.drawOn(c, 50, y - table_height)
+
+    c.showPage()
+
+    # ===== 2페이지: 포트폴리오 구성 차트 =====
+    y = page_height - 50
+
+    # 제목
+    c.setFont(font_name, 20)
+    c.setFillColor(COLOR_BLACK)
+    c.drawString(50, y, "포트폴리오 구성")
+    y -= 40
+
+    # 임시 디렉토리에 차트 저장
+    temp_dir = tempfile.mkdtemp()
+
+    try:
+        # 1. 파이차트 (Portfolio Allocation)
+        fig1, ax1 = plt.subplots(figsize=(5, 4))
+        labels = [item['name'] for item in portfolio_data]
+        sizes = [item['eval_amount'] for item in portfolio_data]
+        percentages = [s / total_evaluation * 100 for s in sizes]
+
+        # 색상 팔레트
+        cmap = plt.colormaps.get_cmap('tab20')
+        chart_colors = [cmap(i / len(portfolio_data)) for i in range(len(portfolio_data))]
+
+        wedges, texts, autotexts = ax1.pie(
+            sizes, labels=labels, autopct='%1.1f%%',
+            colors=chart_colors, startangle=90
+        )
+        ax1.set_title('Portfolio Allocation', fontsize=12)
+        plt.tight_layout()
+
+        pie_path = os.path.join(temp_dir, 'pie_chart.png')
+        plt.savefig(pie_path, dpi=100, bbox_inches='tight', facecolor='white')
+        plt.close(fig1)
+
+        # 2. 막대그래프 (Profit/Loss by Stock)
+        fig2, ax2 = plt.subplots(figsize=(5, 4))
+        names = [item['name'] for item in portfolio_data]
+        pnls = [item['pnl'] for item in portfolio_data]
+        bar_colors = ['red' if p > 0 else 'green' for p in pnls]
+
+        ax2.barh(names, pnls, color=bar_colors)
+        ax2.set_xlabel('P/L (KRW)')
+        ax2.set_title('Profit/Loss by Stock', fontsize=12)
+        ax2.axvline(x=0, color='black', linewidth=0.5)
+        plt.tight_layout()
+
+        bar_path = os.path.join(temp_dir, 'bar_chart.png')
+        plt.savefig(bar_path, dpi=100, bbox_inches='tight', facecolor='white')
+        plt.close(fig2)
+
+        # 차트를 PDF에 추가
+        chart_width = 350
+        chart_height = 280
+
+        # 파이차트 (좌측)
+        c.drawImage(pie_path, 30, y - chart_height, width=chart_width, height=chart_height)
+
+        # 막대그래프 (우측)
+        c.drawImage(bar_path, page_width / 2 + 20, y - chart_height, width=chart_width, height=chart_height)
+
+    finally:
+        # 임시 파일 정리
+        import shutil
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+    c.showPage()
+
+
 def create_pdf(holdings_list, output_path):
     """PDF 생성 (터미널 스타일, 한글 폰트, 색상 적용)"""
     from reportlab.pdfgen import canvas as pdf_canvas
@@ -350,7 +579,10 @@ def create_pdf(holdings_list, output_path):
     font_size = 12  # 폰트 크기 12로 조정
     line_height = 15
 
-    # 각 종목별 페이지 생성
+    # ===== 1-2페이지: 포트폴리오 요약 =====
+    create_summary_pages(c, holdings_list, page_width, page_height)
+
+    # ===== 3페이지~: 각 종목별 페이지 생성 =====
     for stock_code, stock_name, data in holdings_list:
         y_position = page_height - 30
 
