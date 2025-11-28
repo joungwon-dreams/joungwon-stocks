@@ -1,0 +1,111 @@
+{
+  "scan_date": "20251128",
+  "total_scanned": 2769,
+  "candidates_filtered": 50,
+  "deep_analyzed": 30,
+  "generated_at": "2025-11-28 22:41:15",
+  "recommendations": [
+    {
+      "code": "450140",
+      "name": "코오롱모빌리티그룹",
+      "market": "KOSPI",
+      "current_price": 11200,
+      "change_rate": -4.360000133514404,
+      "scanner_score": 2.0,
+      "aegis_score": 2.0,
+      "aegis_signal": "hold",
+      "technical_score": 2.0,
+      "news_score": 0.0,
+      "disclosure_score": 0.0,
+      "supply_score": 0.0,
+      "fundamental_score": 0.0,
+      "key_reasons": [
+        "RSI 저점",
+        "이평선 정배열",
+        "골든크로스"
+      ],
+      "analyzed_at": "2025-11-28 22:41:15"
+    },
+    {
+      "code": "486990",
+      "name": "노타",
+      "market": "KOSDAQ",
+      "current_price": 44200,
+      "change_rate": -11.239999771118164,
+      "scanner_score": 2.0,
+      "aegis_score": 2.0,
+      "aegis_signal": "hold",
+      "technical_score": 2.0,
+      "news_score": 0.0,
+      "disclosure_score": 0.0,
+      "supply_score": 0.0,
+      "fundamental_score": 0.0,
+      "key_reasons": [
+        "RSI 저점",
+        "이평선 정배열",
+        "골든크로스"
+      ],
+      "analyzed_at": "2025-11-28 22:41:15"
+    },
+    {
+      "code": "402340",
+      "name": "SK스퀘어",
+      "market": "KOSPI",
+      "current_price": 298000,
+      "change_rate": -1.0,
+      "scanner_score": 1.5,
+      "aegis_score": 1.5,
+      "aegis_signal": "hold",
+      "technical_score": 1.5,
+      "news_score": 0.0,
+      "disclosure_score": 0.0,
+      "supply_score": 0.0,
+      "fundamental_score": 0.0,
+      "key_reasons": [
+        "이평선 정배열",
+        "골든크로스"
+      ],
+      "analyzed_at": "2025-11-28 22:41:15"
+    },
+    {
+      "code": "439260",
+      "name": "대한조선",
+      "market": "KOSPI",
+      "current_price": 68500,
+      "change_rate": 1.7799999713897705,
+      "scanner_score": 1.5,
+      "aegis_score": 1.5,
+      "aegis_signal": "hold",
+      "technical_score": 1.5,
+      "news_score": 0.0,
+      "disclosure_score": 0.0,
+      "supply_score": 0.0,
+      "fundamental_score": 0.0,
+      "key_reasons": [
+        "이평선 정배열",
+        "골든크로스"
+      ],
+      "analyzed_at": "2025-11-28 22:41:15"
+    },
+    {
+      "code": "000100",
+      "name": "유한양행",
+      "market": "KOSPI",
+      "current_price": 122000,
+      "change_rate": 1.5,
+      "scanner_score": 1.5,
+      "aegis_score": 1.5,
+      "aegis_signal": "hold",
+      "technical_score": 1.5,
+      "news_score": 0.0,
+      "disclosure_score": 0.0,
+      "supply_score": 0.0,
+      "fundamental_score": 0.0,
+      "key_reasons": [
+        "이평선 정배열",
+        "골든크로스"
+      ],
+      "analyzed_at": "2025-11-28 22:41:15"
+    }
+  ]
+}

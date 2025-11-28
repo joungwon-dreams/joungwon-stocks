@@ -479,6 +479,41 @@ This document outlines the detailed technical design for evolving the `joungwon.
 2.  Implement `DailyPerformanceAnalyzer` to aggregate data from `trade_history` and `stock_assets`.
 3.  Develop `generate_daily_performance_report.py` using ReportLab and Matplotlib.
 4.  Schedule cron job for 16:00 KST.
+
+## 📐 Phase 9: AI New Stock Discovery (AI Sniper)
+**Objective:** Leverage the AEGIS `InformationFusionEngine` to scan the entire market (KOSPI/KOSDAQ) and identify high-probability trading opportunities ("Hidden Gems").
+
+### 9.1 Architecture
+- **Module Path:** `src/aegis/discovery/`
+- **Script:** `scripts/run_market_scan.py`
+
+### 9.2 Detailed Specs
+
+#### A. `MarketScanner` (Upgrade)
+- **Function:** Pre-filter the universe (2,500+ stocks) to a manageable candidate list (e.g., 50 stocks).
+- **Filters:**
+    -   **Liquidity:** Avg Daily Traded Value > 10B KRW.
+    -   **Technical:** Golden Cross, RSI Oversold (<30), or Volatility Breakout.
+    -   **Supply:** Foreigner/Institutional Net Buy > 0.
+
+#### B. `OpportunityFinder`
+- **Logic:**
+    -   Iterate through candidates from `MarketScanner`.
+    -   **Deep Dive:** Run `InformationFusionEngine` on each candidate.
+        -   Analyze News (Gemini), Disclosures, Consensus, etc.
+    -   **Ranking:** Sort by Final AEGIS Score.
+    -   **Selection:** Pick Top 3-5 stocks with Score >= 2.0.
+
+#### C. Reporting
+- **Output:** Add "Tomorrow's Watchlist" section to `daily_performance_report.pdf`.
+- **Content:** Stock Name, Current Price, AEGIS Score, **Key Rationale** (e.g., "Earnings Surprise + Foreigner Buy").
+
+### 9.3 Action Plan
+1.  Implement `src/aegis/discovery/scanner.py` (Pre-filter).
+2.  Implement `src/aegis/discovery/finder.py` (Deep Analysis).
+3.  Create `scripts/run_market_scan.py`.
+4.  Update `generate_daily_performance_report.py` to include the watchlist.
+
 **Objective:** Full automation with a real-time web interface.
 
 ### 5.1 Architecture
