@@ -52,6 +52,9 @@ class MarketScanner:
     """
     전체 시장 스캐너
     KOSPI/KOSDAQ 전 종목 중 유망 후보군 필터링
+
+    Args:
+        market: 대상 시장 ("KOSPI", "KOSDAQ", "ALL")
     """
 
     # 필터링 기준
@@ -59,7 +62,17 @@ class MarketScanner:
     MIN_PRICE = 1000  # 1000원 이상 (동전주 제외)
     MAX_CANDIDATES = 50  # 최대 후보 수
 
-    def __init__(self):
+    # 지원 시장
+    VALID_MARKETS = ["KOSPI", "KOSDAQ", "ALL"]
+
+    def __init__(self, market: str = "KOSPI"):
+        """
+        Args:
+            market: 대상 시장 ("KOSPI", "KOSDAQ", "ALL")
+        """
+        if market.upper() not in self.VALID_MARKETS:
+            raise ValueError(f"Invalid market: {market}. Use one of {self.VALID_MARKETS}")
+        self.market = market.upper()
         self.candidates: List[CandidateStock] = []
         self.scan_date: Optional[str] = None
 
@@ -74,7 +87,8 @@ class MarketScanner:
             필터링된 후보 종목 리스트
         """
         self.scan_date = target_date or self._get_latest_trading_date()
-        print(f"📡 Market Scan 시작: {self.scan_date}")
+        market_label = self.market if self.market != "ALL" else "KOSPI+KOSDAQ"
+        print(f"📡 Market Scan 시작: {self.scan_date} ({market_label})")
 
         # 1. 전 종목 리스트 가져오기
         all_stocks = await self._get_all_stocks()
@@ -118,11 +132,18 @@ class MarketScanner:
                 continue
         return today.strftime("%Y%m%d")
 
-    async def _get_all_stocks(self) -> List[Dict[str, Any]]:
-        """KOSPI/KOSDAQ 전 종목 리스트"""
-        all_stocks = []
+    def _get_target_markets(self) -> List[str]:
+        """스캔 대상 시장 목록 반환"""
+        if self.market == "ALL":
+            return ["KOSPI", "KOSDAQ"]
+        return [self.market]
 
-        for market in ["KOSPI", "KOSDAQ"]:
+    async def _get_all_stocks(self) -> List[Dict[str, Any]]:
+        """대상 시장의 전 종목 리스트"""
+        all_stocks = []
+        target_markets = self._get_target_markets()
+
+        for market in target_markets:
             try:
                 tickers = pykrx.get_market_ticker_list(self.scan_date, market=market)
                 for ticker in tickers:
@@ -140,9 +161,10 @@ class MarketScanner:
     async def _filter_by_liquidity(self, stocks: List[Dict]) -> List[Dict]:
         """유동성 필터 (거래대금 기준)"""
         filtered = []
+        target_markets = self._get_target_markets()
 
         # OHLCV 데이터 조회
-        for market in ["KOSPI", "KOSDAQ"]:
+        for market in target_markets:
             try:
                 df = pykrx.get_market_ohlcv(self.scan_date, market=market)
                 # pykrx 컬럼: 시가, 고가, 저가, 종가, 거래량, 거래대금, 등락률, 시가총액

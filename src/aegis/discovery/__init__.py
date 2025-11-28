@@ -1,16 +1,23 @@
 """
-AEGIS Discovery Module - Phase 9
+AEGIS Discovery Module - Phase 9 & 9.5
 AI-powered new stock discovery system (AI Sniper)
 
 Components:
 - MarketScanner: Pre-filter universe to candidate list
 - OpportunityFinder: Deep analysis with InformationFusionEngine
+- RecommendationTracker: Track and verify recommendations (Phase 9.5)
 """
 
-from .scanner import MarketScanner
-from .finder import OpportunityFinder
+from .scanner import MarketScanner, CandidateStock
+from .finder import OpportunityFinder, DiscoveryResult, get_opportunity_finder
+from .tracker import RecommendationTracker, get_recommendation_tracker
 
 __all__ = [
     'MarketScanner',
+    'CandidateStock',
     'OpportunityFinder',
+    'DiscoveryResult',
+    'get_opportunity_finder',
+    'RecommendationTracker',
+    'get_recommendation_tracker',
 ]

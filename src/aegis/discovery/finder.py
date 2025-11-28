@@ -64,14 +64,22 @@ class OpportunityFinder:
     """
     기회 발굴기
     MarketScanner + InformationFusionEngine 연동
+
+    Args:
+        market: 대상 시장 ("KOSPI", "KOSDAQ", "ALL")
     """
 
     TOP_N = 5  # 최종 추천 종목 수
     MIN_AEGIS_SCORE = 1.5  # AEGIS 최소 점수 (BUY 이상)
     MAX_DEEP_ANALYSIS = 30  # 심층 분석 최대 종목 수 (API 비용 절감)
 
-    def __init__(self):
-        self.scanner = MarketScanner()
+    def __init__(self, market: str = "KOSPI"):
+        """
+        Args:
+            market: 대상 시장 ("KOSPI", "KOSDAQ", "ALL")
+        """
+        self.market = market.upper()
+        self.scanner = MarketScanner(market=self.market)
         self.results: List[DiscoveryResult] = []
         self.report: Optional[DiscoveryReport] = None
 

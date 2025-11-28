@@ -1,0 +1,86 @@
+{
+  "scan_date": "20251128",
+  "market": "KOSPI",
+  "total_scanned": 958,
+  "candidates_filtered": 50,
+  "deep_analyzed": 30,
+  "generated_at": "2025-11-29 05:42:30",
+  "recommendations": [
+    {
+      "code": "450140",
+      "name": "코오롱모빌리티그룹",
+      "market": "KOSPI",
+      "current_price": 11200,
+      "change_rate": -4.360000133514404,
+      "aegis_score": 2.0,
+      "scanner_score": 2.0,
+      "key_reasons": [
+        "RSI 저점",
+        "이평선 정배열",
+        "골든크로스"
+      ],
+      "technical_score": 2.0,
+      "supply_score": 0.0
+    },
+    {
+      "code": "402340",
+      "name": "SK스퀘어",
+      "market": "KOSPI",
+      "current_price": 298000,
+      "change_rate": -1.0,
+      "aegis_score": 1.5,
+      "scanner_score": 1.5,
+      "key_reasons": [
+        "이평선 정배열",
+        "골든크로스"
+      ],
+      "technical_score": 1.5,
+      "supply_score": 0.0
+    },
+    {
+      "code": "439260",
+      "name": "대한조선",
+      "market": "KOSPI",
+      "current_price": 68500,
+      "change_rate": 1.7799999713897705,
+      "aegis_score": 1.5,
+      "scanner_score": 1.5,
+      "key_reasons": [
+        "이평선 정배열",
+        "골든크로스"
+      ],
+      "technical_score": 1.5,
+      "supply_score": 0.0
+    },
+    {
+      "code": "000100",
+      "name": "유한양행",
+      "market": "KOSPI",
+      "current_price": 122000,
+      "change_rate": 1.5,
+      "aegis_score": 1.5,
+      "scanner_score": 1.5,
+      "key_reasons": [
+        "이평선 정배열",
+        "골든크로스"
+      ],
+      "technical_score": 1.5,
+      "supply_score": 0.0
+    },
+    {
+      "code": "014680",
+      "name": "한솔케미칼",
+      "market": "KOSPI",
+      "current_price": 238000,
+      "change_rate": -0.41999998688697815,
+      "aegis_score": 1.5,
+      "scanner_score": 1.5,
+      "key_reasons": [
+        "이평선 정배열",
+        "골든크로스"
+      ],
+      "technical_score": 1.5,
+      "supply_score": 0.0
+    }
+  ]
+}
