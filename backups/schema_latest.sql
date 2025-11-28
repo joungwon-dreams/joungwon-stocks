@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict hfozIL0kk3WHY0ac8h14e68Gfw3JjgAN5XOCREadjXUpUFzbedEzgs3ZHafXgm4
+\restrict NZghRO3z9ecWZtYO49P8jfPTNCdlkldapNOSuRwWdyT4zApCiVTnJlYyXY2SkaB
 
 -- Dumped from database version 14.20 (Homebrew)
 -- Dumped by pg_dump version 14.20 (Homebrew)
@@ -163,6 +163,55 @@ ALTER FUNCTION public.update_updated_at_column() OWNER TO wonny;
 SET default_tablespace = '';
 
 SET default_table_access_method = heap;
+
+--
+-- Name: aegis_signal_history; Type: TABLE; Schema: public; Owner: wonny
+--
+
+CREATE TABLE public.aegis_signal_history (
+    id integer NOT NULL,
+    stock_code character varying(10) NOT NULL,
+    stock_name character varying(50) NOT NULL,
+    signal_type character varying(20) NOT NULL,
+    signal_score integer NOT NULL,
+    current_price integer NOT NULL,
+    ma_score integer,
+    vwap_score integer,
+    rsi_score integer,
+    ma_reason character varying(100),
+    vwap_reason character varying(100),
+    rsi_reason character varying(100),
+    recorded_at timestamp without time zone DEFAULT now(),
+    result_1h numeric(5,2),
+    result_1d numeric(5,2),
+    is_success boolean,
+    verified_at timestamp without time zone
+);
+
+
+ALTER TABLE public.aegis_signal_history OWNER TO wonny;
+
+--
+-- Name: aegis_signal_history_id_seq; Type: SEQUENCE; Schema: public; Owner: wonny
+--
+
+CREATE SEQUENCE public.aegis_signal_history_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.aegis_signal_history_id_seq OWNER TO wonny;
+
+--
+-- Name: aegis_signal_history_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: wonny
+--
+
+ALTER SEQUENCE public.aegis_signal_history_id_seq OWNED BY public.aegis_signal_history.id;
+
 
 --
 -- Name: analysis_domains; Type: TABLE; Schema: public; Owner: wonny
@@ -3298,6 +3347,13 @@ ALTER SEQUENCE public.wisefn_analyst_reports_id_seq OWNED BY public.wisefn_analy
 
 
 --
+-- Name: aegis_signal_history id; Type: DEFAULT; Schema: public; Owner: wonny
+--
+
+ALTER TABLE ONLY public.aegis_signal_history ALTER COLUMN id SET DEFAULT nextval('public.aegis_signal_history_id_seq'::regclass);
+
+
+--
 -- Name: analysis_domains id; Type: DEFAULT; Schema: public; Owner: wonny
 --
 
@@ -3568,6 +3624,14 @@ ALTER TABLE ONLY public.verification_results ALTER COLUMN id SET DEFAULT nextval
 --
 
 ALTER TABLE ONLY public.wisefn_analyst_reports ALTER COLUMN id SET DEFAULT nextval('public.wisefn_analyst_reports_id_seq'::regclass);
+
+
+--
+-- Name: aegis_signal_history aegis_signal_history_pkey; Type: CONSTRAINT; Schema: public; Owner: wonny
+--
+
+ALTER TABLE ONLY public.aegis_signal_history
+    ADD CONSTRAINT aegis_signal_history_pkey PRIMARY KEY (id);
 
 
 --
@@ -4128,6 +4192,27 @@ ALTER TABLE ONLY public.wisefn_analyst_reports
 
 ALTER TABLE ONLY public.wisefn_analyst_reports
     ADD CONSTRAINT wisefn_analyst_reports_stock_code_report_date_brokerage_key UNIQUE (stock_code, report_date, brokerage);
+
+
+--
+-- Name: idx_aegis_signal_history_recorded; Type: INDEX; Schema: public; Owner: wonny
+--
+
+CREATE INDEX idx_aegis_signal_history_recorded ON public.aegis_signal_history USING btree (recorded_at DESC);
+
+
+--
+-- Name: idx_aegis_signal_history_stock; Type: INDEX; Schema: public; Owner: wonny
+--
+
+CREATE INDEX idx_aegis_signal_history_stock ON public.aegis_signal_history USING btree (stock_code, recorded_at DESC);
+
+
+--
+-- Name: idx_aegis_signal_unique_hourly; Type: INDEX; Schema: public; Owner: wonny
+--
+
+CREATE UNIQUE INDEX idx_aegis_signal_unique_hourly ON public.aegis_signal_history USING btree (stock_code, signal_type, date(recorded_at), EXTRACT(hour FROM recorded_at));
 
 
 --
@@ -5301,5 +5386,5 @@ ALTER TABLE ONLY public.verification_results
 -- PostgreSQL database dump complete
 --
 
-\unrestrict hfozIL0kk3WHY0ac8h14e68Gfw3JjgAN5XOCREadjXUpUFzbedEzgs3ZHafXgm4
+\unrestrict NZghRO3z9ecWZtYO49P8jfPTNCdlkldapNOSuRwWdyT4zApCiVTnJlYyXY2SkaB
 
