@@ -134,6 +134,17 @@ async def get_stock_detail_data(stock_code: str, stock_name: str, limit_count=20
             current_change_rate = float(current_row['change_rate'])
             current_time = current_row['timestamp']
 
+        # AI 등급 조회 (smart_recommendations 테이블)
+        ai_query = '''
+            SELECT ai_grade
+            FROM smart_recommendations
+            WHERE stock_code = $1
+            ORDER BY created_at DESC
+            LIMIT 1
+        '''
+        ai_row = await conn.fetchrow(ai_query, stock_code)
+        ai_grade = ai_row['ai_grade'] if ai_row else '-'
+
         # 최근 N개 틱 데이터 조회
         ticks_query = '''
             SELECT
@@ -164,7 +175,8 @@ async def get_stock_detail_data(stock_code: str, stock_name: str, limit_count=20
             'current_change_rate': current_change_rate,
             'current_time': current_time,
             'prev_close': prev_close,
-            'ticks': ticks
+            'ticks': ticks,
+            'ai_grade': ai_grade
         }
 
     finally:
@@ -375,7 +387,7 @@ async def get_aegis_signal(stock_code: str) -> tuple:
         ''', stock_code)
 
         if not rows or len(rows) < 60:
-            return "데이터부족", "➖", COLOR_BLACK, 0
+            return "부족", "➖", COLOR_BLACK, 0
 
         # DataFrame 변환
         df = pd.DataFrame([dict(r) for r in rows])
@@ -392,11 +404,11 @@ async def get_aegis_signal(stock_code: str) -> tuple:
 
         # 신호별 표시
         signal_map = {
-            Signal.STRONG_BUY: ("강력매수", "🔴", COLOR_RED),
+            Signal.STRONG_BUY: ("강수", "🔴", COLOR_RED),
             Signal.BUY: ("매수", "🔺", colors.orangered),
             Signal.HOLD: ("관망", "➖", COLOR_BLACK),
             Signal.SELL: ("매도", "🔻", COLOR_BLUE),
-            Signal.STRONG_SELL: ("강력매도", "🔵", colors.darkblue),
+            Signal.STRONG_SELL: ("강도", "🔵", colors.darkblue),
         }
 
         text, emoji, color = signal_map.get(signal, ("관망", "➖", COLOR_BLACK))
@@ -411,13 +423,13 @@ async def get_aegis_signal(stock_code: str) -> tuple:
 
 
 async def get_aegis_signal_history(limit: int = 10) -> list:
-    """최근 AEGIS 신호 히스토리 조회"""
+    """최근 AEGIS 신호 히스토리 조회 (검증 결과 포함)"""
     conn = await asyncpg.connect(**DB_CONFIG)
 
     try:
         rows = await conn.fetch('''
             SELECT stock_code, stock_name, signal_type, signal_score,
-                   current_price, recorded_at
+                   current_price, recorded_at, result_1h, result_1d, is_success
             FROM aegis_signal_history
             ORDER BY recorded_at DESC
             LIMIT $1
@@ -430,11 +442,12 @@ async def get_aegis_signal_history(limit: int = 10) -> list:
         await conn.close()
 
 
-def create_aegis_dashboard_page(c, aegis_signals, page_width, page_height):
+def create_aegis_dashboard_page(c, aegis_signals, signal_history, page_width, page_height):
     """
     PROJECT AEGIS Market Dashboard 페이지 생성 (3페이지)
     - 매수/매도 추천 종목 2단 레이아웃
-    - 신호 히스토리 테이블
+    - 보유종목 AEGIS 신호 현황 테이블
+    - 신호 기록 히스토리 테이블
     """
     font_name = 'AppleGothic'
     now = datetime.now()
@@ -566,8 +579,95 @@ def create_aegis_dashboard_page(c, aegis_signals, page_width, page_height):
 
     c.showPage()
 
+    # ===== 3페이지: 신호 기록 히스토리 =====
+    y = page_height - 50
 
-def create_summary_pages(c, holdings_data, page_width, page_height):
+    # 제목
+    c.setFont(font_name, 24)
+    c.setFillColor(COLOR_BLACK)
+    c.drawCentredString(page_width / 2, y, "📜 AEGIS 신호 기록")
+    y -= 25
+
+    # 부제목
+    c.setFont(font_name, 11)
+    c.setFillColor(colors.grey)
+    c.drawCentredString(page_width / 2, y, f"신호 발생 후 1시간/1일 수익률 검증 결과 | {now.strftime('%Y-%m-%d %H:%M')}")
+    y -= 40
+
+    # 히스토리 테이블
+    history_header = ['기록 시간', '', '종목명', '신호', '점수', '진입가', '1H결과', '1D결과', '판정']
+    history_data = [history_header]
+
+    # 신호 타입 축약
+    signal_short = {
+        'STRONG_BUY': '강수', 'BUY': '매수', 'HOLD': '관망',
+        'SELL': '매도', 'STRONG_SELL': '강도'
+    }
+
+    for item in signal_history[:12]:  # 최대 12개
+        recorded = item['recorded_at'].strftime('%m/%d %H:%M') if item['recorded_at'] else '-'
+        sig_type = signal_short.get(item['signal_type'], item['signal_type'])
+        score = f"{item['signal_score']:+d}"
+        price = f"{item['current_price']:,}"
+        r1h = f"{float(item['result_1h']):+.2f}%" if item['result_1h'] is not None else '-'
+        r1d = f"{float(item['result_1d']):+.2f}%" if item['result_1d'] is not None else '-'
+
+        if item['is_success'] is True:
+            judge = '✅승'
+        elif item['is_success'] is False:
+            judge = '❌패'
+        else:
+            judge = '⏳'
+
+        history_data.append([recorded, '', item['stock_name'], sig_type, score, price, r1h, r1d, judge])
+
+    # 컬럼 너비 (시간과 종목명 사이 빈 컬럼 추가)
+    history_col_widths = [80, 20, 90, 50, 45, 80, 70, 70, 45]
+    history_table = Table(history_data, colWidths=history_col_widths)
+
+    history_style = [
+        ('FONTNAME', (0, 0), (-1, -1), font_name),
+        ('FONTSIZE', (0, 0), (-1, -1), 11),
+        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),  # 헤더 중앙
+        ('ALIGN', (0, 1), (0, -1), 'LEFT'),    # 시간 왼쪽
+        ('ALIGN', (2, 1), (2, -1), 'LEFT'),    # 종목명 왼쪽
+        ('ALIGN', (3, 1), (-1, -1), 'CENTER'), # 나머지 중앙
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.Color(0.85, 0.85, 0.95)),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.lightgrey),
+        ('BOX', (0, 0), (-1, -1), 1.5, colors.grey),
+        ('LINEAFTER', (0, 0), (0, -1), 2, colors.grey),  # 시간 컬럼 오른쪽 굵은 선
+    ]
+
+    # 결과 색상 적용
+    for i, item in enumerate(signal_history[:12]):
+        row = i + 1
+        # 1H 결과 색상
+        if item['result_1h'] is not None:
+            if float(item['result_1h']) > 0:
+                history_style.append(('TEXTCOLOR', (6, row), (6, row), COLOR_RED))
+            elif float(item['result_1h']) < 0:
+                history_style.append(('TEXTCOLOR', (6, row), (6, row), COLOR_BLUE))
+        # 1D 결과 색상
+        if item['result_1d'] is not None:
+            if float(item['result_1d']) > 0:
+                history_style.append(('TEXTCOLOR', (7, row), (7, row), COLOR_RED))
+            elif float(item['result_1d']) < 0:
+                history_style.append(('TEXTCOLOR', (7, row), (7, row), COLOR_BLUE))
+        # 신호 색상
+        if item['signal_score'] >= 1:
+            history_style.append(('TEXTCOLOR', (3, row), (4, row), COLOR_RED))
+        elif item['signal_score'] <= -1:
+            history_style.append(('TEXTCOLOR', (3, row), (4, row), COLOR_BLUE))
+
+    history_table.setStyle(TableStyle(history_style))
+    h_table_width, h_table_height = history_table.wrap(0, 0)
+    history_table.drawOn(c, 50, y - h_table_height)
+
+    c.showPage()
+
+
+def create_summary_pages(c, holdings_data, aegis_signals, page_width, page_height):
     """
     포트폴리오 요약 페이지 생성 (1-2페이지)
     1페이지: 제목 + 포트폴리오 요약 테이블 + 종목별 상세 현황 테이블
@@ -575,6 +675,12 @@ def create_summary_pages(c, holdings_data, page_width, page_height):
     """
     font_name = 'AppleGothic'
     now = datetime.now()
+
+    # AEGIS 신호를 딕셔너리로 변환 (stock_code -> signal)
+    aegis_dict = {}
+    for stock_code, stock_name, aegis in aegis_signals:
+        sig_text, _, _, sig_score = aegis
+        aegis_dict[stock_code] = (sig_text, sig_score)
 
     # 포트폴리오 데이터 계산
     portfolio_data = []
@@ -591,8 +697,11 @@ def create_summary_pages(c, holdings_data, page_width, page_height):
             pnl = eval_amount - buy_amount
             pnl_rate = (pnl / buy_amount * 100) if buy_amount > 0 else 0
 
-            # AI 등급 (임시로 '-' 표시, 나중에 연동 가능)
+            # AI 등급
             ai_grade = data.get('ai_grade', '-')
+
+            # AEGIS 신호
+            aegis_text, aegis_score = aegis_dict.get(stock_code, ('-', 0))
 
             portfolio_data.append({
                 'name': stock_name,
@@ -604,7 +713,9 @@ def create_summary_pages(c, holdings_data, page_width, page_height):
                 'eval_amount': eval_amount,
                 'pnl': pnl,
                 'pnl_rate': pnl_rate,
-                'ai_grade': ai_grade
+                'ai_grade': ai_grade,
+                'aegis_text': aegis_text,
+                'aegis_score': aegis_score
             })
 
             total_investment += buy_amount
@@ -667,12 +778,13 @@ def create_summary_pages(c, holdings_data, page_width, page_height):
     y -= 25
 
     # 종목별 테이블
-    detail_header = ['종목명', '코드', '수량', '평단가', '현재가', '매수금액', '평가금액', '손익', '수익률', 'AI등급']
+    detail_header = ['종목명', '코드', '수량', '평단가', '현재가', '매수금액', '평가금액', '손익', '수익률', 'AI', 'AEGIS']
     detail_data = [detail_header]
 
     for item in portfolio_data:
         pnl_str = f"{item['pnl']:+,}"
         pnl_rate_str = f"{item['pnl_rate']:+.1f}%"
+        aegis_str = f"{item['aegis_text']}({item['aegis_score']:+d})"
 
         detail_data.append([
             item['name'],
@@ -684,10 +796,11 @@ def create_summary_pages(c, holdings_data, page_width, page_height):
             f"{item['eval_amount']:,}",
             pnl_str,
             pnl_rate_str,
-            item['ai_grade']
+            item['ai_grade'],
+            aegis_str
         ])
 
-    col_widths = [85, 55, 40, 60, 60, 80, 80, 75, 55, 45]
+    col_widths = [80, 50, 35, 55, 55, 75, 75, 70, 50, 30, 65]
     detail_table = Table(detail_data, colWidths=col_widths)
 
     # 테이블 스타일 (손익/수익률 색상 적용)
@@ -704,13 +817,19 @@ def create_summary_pages(c, holdings_data, page_width, page_height):
         ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.Color(0.97, 0.97, 0.97)]),
     ]
 
-    # 손익/수익률 색상 적용
+    # 손익/수익률 색상 적용 + AEGIS 색상 적용
     for i, item in enumerate(portfolio_data):
         row = i + 1
+        # 손익/수익률 색상
         if item['pnl'] > 0:
             detail_style.append(('TEXTCOLOR', (7, row), (8, row), COLOR_RED))
         elif item['pnl'] < 0:
             detail_style.append(('TEXTCOLOR', (7, row), (8, row), COLOR_BLUE))
+        # AEGIS 색상 (매수=빨강, 매도=파랑)
+        if item['aegis_score'] >= 1:
+            detail_style.append(('TEXTCOLOR', (10, row), (10, row), COLOR_RED))
+        elif item['aegis_score'] <= -1:
+            detail_style.append(('TEXTCOLOR', (10, row), (10, row), COLOR_BLUE))
 
     detail_table.setStyle(TableStyle(detail_style))
     table_width, table_height = detail_table.wrap(0, 0)
@@ -786,7 +905,7 @@ def create_summary_pages(c, holdings_data, page_width, page_height):
     c.showPage()
 
 
-def create_pdf(holdings_list, aegis_signals, output_path):
+def create_pdf(holdings_list, aegis_signals, signal_history, output_path):
     """PDF 생성 (터미널 스타일, 한글 폰트, 색상 적용)"""
     from reportlab.pdfgen import canvas as pdf_canvas
     from reportlab.lib.pagesizes import landscape, A4
@@ -800,10 +919,10 @@ def create_pdf(holdings_list, aegis_signals, output_path):
     line_height = 15
 
     # ===== 1-2페이지: 포트폴리오 요약 =====
-    create_summary_pages(c, holdings_list, page_width, page_height)
+    create_summary_pages(c, holdings_list, aegis_signals, page_width, page_height)
 
     # ===== 3페이지: PROJECT AEGIS Market Dashboard =====
-    create_aegis_dashboard_page(c, aegis_signals, page_width, page_height)
+    create_aegis_dashboard_page(c, aegis_signals, signal_history, page_width, page_height)
 
     # ===== 4페이지~: 각 종목별 페이지 생성 =====
     for stock_code, stock_name, data in holdings_list:
@@ -952,18 +1071,18 @@ def create_pdf(holdings_list, aegis_signals, output_path):
         c.drawString(30, y_position, header_line)
         y_position -= line_height + 5
 
-        # 테이블 헤더 (고정폭) - 거래량을 현재가 앞으로 이동
+        # 테이블 헤더 (고정폭) - 시간과 거래량 사이 간격 확보
         c.setFillColor(COLOR_BLACK)
         header_x = 40
         c.drawString(header_x, y_position, "시간")
-        c.drawString(header_x + 70, y_position, "거래량")
-        c.drawString(header_x + 180, y_position, "현재가")
-        c.drawString(header_x + 260, y_position, "직전")
-        c.drawString(header_x + 350, y_position, "변동률")
-        c.drawString(header_x + 430, y_position, "전일")
-        c.drawString(header_x + 520, y_position, "전일률")
-        c.drawString(header_x + 610, y_position, "평단가")
-        c.drawString(header_x + 700, y_position, "평가율")
+        c.drawString(header_x + 100, y_position, "거래량")  # 70 → 100 (간격 +30)
+        c.drawString(header_x + 210, y_position, "현재가")  # 180 → 210
+        c.drawString(header_x + 290, y_position, "직전")    # 260 → 290
+        c.drawString(header_x + 370, y_position, "변동률")  # 350 → 370
+        c.drawString(header_x + 450, y_position, "전일")    # 430 → 450
+        c.drawString(header_x + 530, y_position, "전일률")  # 520 → 530
+        c.drawString(header_x + 620, y_position, "평단가")  # 610 → 620
+        c.drawString(header_x + 710, y_position, "평가율")  # 700 → 710
         y_position -= line_height
 
         separator = "-" * 120
@@ -981,17 +1100,17 @@ def create_pdf(holdings_list, aegis_signals, output_path):
             prev_price = int(tick['prev_price']) if tick['prev_price'] else price
             prev_volume = int(tick['prev_volume']) if tick['prev_volume'] else volume
 
-            # 우측 정렬 기본 정보 - 거래량을 현재가 앞으로 이동
+            # 우측 정렬 기본 정보 - 시간과 거래량 사이 간격 확보
             row_x = 40
             col_time = row_x
-            col_volume_right = row_x + 150  # 거래량 우측 끝 (먼저)
-            col_price_right = row_x + 250  # 현재가 우측 끝 (나중)
-            col_diff_right = row_x + 340  # 직전 우측 끝
-            col_pct_right = row_x + 420  # 변동률 우측 끝
-            col_prev_diff_right = row_x + 510  # 전일 우측 끝
-            col_prev_pct_right = row_x + 600  # 전일률 우측 끝
-            col_avg_diff_right = row_x + 690  # 평단가 우측 끝
-            col_avg_pct_right = row_x + 780  # 평가율 우측 끝
+            col_volume_right = row_x + 180  # 거래량 우측 끝 (150 → 180)
+            col_price_right = row_x + 280  # 현재가 우측 끝 (250 → 280)
+            col_diff_right = row_x + 360   # 직전 우측 끝 (340 → 360)
+            col_pct_right = row_x + 440    # 변동률 우측 끝 (420 → 440)
+            col_prev_diff_right = row_x + 530  # 전일 우측 끝 (510 → 530)
+            col_prev_pct_right = row_x + 620   # 전일률 우측 끝 (600 → 620)
+            col_avg_diff_right = row_x + 710   # 평단가 우측 끝 (690 → 710)
+            col_avg_pct_right = row_x + 800    # 평가율 우측 끝 (780 → 800)
 
             c.setFillColor(COLOR_BLACK)
             c.drawString(col_time, y_position, time_str)
@@ -1188,10 +1307,15 @@ async def main():
 
     print(f"\n✅ 모든 종목 데이터 수집 완료\n")
 
+    # AEGIS 신호 히스토리 조회
+    print("📜 AEGIS 신호 기록 조회 중...")
+    signal_history = await get_aegis_signal_history(limit=10)
+    print(f"   {len(signal_history)}건 조회 완료")
+
     # PDF 생성
     output_path = output_dir / 'realtime_dashboard.pdf'
     print(f"📄 PDF 생성 중: {output_path}")
-    create_pdf(holdings_data, aegis_signals, output_path)
+    create_pdf(holdings_data, aegis_signals, signal_history, output_path)
 
     print("\n" + "="*80)
     print(f"✅ 완료! PDF 경로: {output_path}")

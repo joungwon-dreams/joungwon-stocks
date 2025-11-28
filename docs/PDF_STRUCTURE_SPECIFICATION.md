@@ -274,8 +274,41 @@ Generative AI Equity Research
 
 ---
 
+## 5. PDF 생성 스크립트 관리
+
+### 5.1 공식 PDF 생성 스크립트 (ONLY THESE)
+
+| 파일 | 출력 파일 | 호출 | 설명 |
+|------|----------|------|------|
+| `scripts/gemini/generate_pdf_report.py` | `reports/holding_stock/{종목명}.pdf` | `cron/10min.py` | 10페이지 상세 리포트 |
+| `scripts/generate_realtime_dashboard_terminal_style.py` | `reports/holding_stock/realtime_dashboard.pdf` | `cron/1min.py` | 실시간 대시보드 |
+
+### 5.2 삭제된 스크립트 (DO NOT RECREATE)
+
+| 파일 | 삭제일 | 사유 |
+|------|--------|------|
+| `scripts/generate_holding_reports.py` | 2025-11-28 15:05 | 동일 위치에 간소화된 2페이지 PDF 덮어씀 - 구조 위반 |
+
+### 5.3 PDF 출력 규칙 (CRITICAL)
+
+```
+reports/holding_stock/
+├── realtime_dashboard.pdf    # ONLY from generate_realtime_dashboard_terminal_style.py
+├── 한국전력.pdf               # ONLY from generate_pdf_report.py (10페이지)
+├── 카카오.pdf                 # ONLY from generate_pdf_report.py (10페이지)
+└── ...                       # 모든 종목명.pdf는 ONLY generate_pdf_report.py
+```
+
+**절대 금지사항**:
+- `reports/holding_stock/` 폴더에 다른 스크립트로 PDF 생성 금지
+- 동일 파일명으로 덮어쓰는 스크립트 생성 금지
+- 간소화된 PDF 포맷 사용 금지
+
+---
+
 ## 변경 이력
 
 | 날짜 | 버전 | 변경 내용 | 승인자 |
 |------|------|----------|--------|
 | 2025-11-28 | 1.0.0 | 최초 작성 (구조 잠금) | wonny |
+| 2025-11-28 | 1.0.1 | generate_holding_reports.py 삭제, PDF 출력 규칙 추가 | wonny |

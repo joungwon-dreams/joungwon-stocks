@@ -467,10 +467,12 @@ class PDFReportGenerator:
         plt.close()
 
     def _generate_financial_chart(self):
+        if not self.financials_yearly:
+            return
         years = [str(row['fiscal_year']) for row in reversed(self.financials_yearly)]
-        revenue = [row['revenue']/100000000 for row in reversed(self.financials_yearly)]
-        op_profit = [row['operating_profit']/100000000 for row in reversed(self.financials_yearly)]
-        net_profit = [row['net_profit']/100000000 for row in reversed(self.financials_yearly)]
+        revenue = [(row['revenue'] or 0)/100000000 for row in reversed(self.financials_yearly)]
+        op_profit = [(row['operating_profit'] or 0)/100000000 for row in reversed(self.financials_yearly)]
+        net_profit = [(row['net_profit'] or 0)/100000000 for row in reversed(self.financials_yearly)]
 
         x = np.arange(len(years))
         width = 0.25
@@ -502,8 +504,8 @@ class PDFReportGenerator:
         if not data_30: return
 
         dates = [row['trade_date'] for row in reversed(data_30)]
-        foreign = [row['foreign']/1000 for row in reversed(data_30)]
-        institutional = [row['institutional']/1000 for row in reversed(data_30)]
+        foreign = [(row['foreign'] or 0)/1000 for row in reversed(data_30)]
+        institutional = [(row['institutional'] or 0)/1000 for row in reversed(data_30)]
 
         # Prepare Price Data - 30일 OHLCV 데이터 사용
         ohlcv_30 = self.ohlcv[:30] if self.ohlcv else []
@@ -560,8 +562,8 @@ class PDFReportGenerator:
 
         dates = [row['trade_date'] for row in data]
         # Calculate cumulative sum (unit: 1000 shares)
-        foreign_cum = np.cumsum([row['foreign']/1000 for row in data])
-        institutional_cum = np.cumsum([row['institutional']/1000 for row in data])
+        foreign_cum = np.cumsum([(row['foreign'] or 0)/1000 for row in data])
+        institutional_cum = np.cumsum([(row['institutional'] or 0)/1000 for row in data])
         # individual_cum = np.cumsum([row['individual']/1000 for row in data])
 
         # Prepare Price Data - 1년 (365일) OHLCV 데이터 사용
@@ -1213,9 +1215,9 @@ class PDFReportGenerator:
         # Financial Table
         fin_data = [['Year', 'Revenue(억)', 'Op. Profit(억)', 'Net Profit(억)', 'OPM(%)']]
         for row in reversed(self.financials_yearly):
-            revenue = row['revenue']/100000000
-            op_profit = row['operating_profit']/100000000
-            net_profit = row['net_profit']/100000000
+            revenue = (row['revenue'] or 0)/100000000
+            op_profit = (row['operating_profit'] or 0)/100000000
+            net_profit = (row['net_profit'] or 0)/100000000
             op_margin = (op_profit / revenue * 100) if revenue > 0 else 0
             fin_data.append([
                 str(row['fiscal_year']),
