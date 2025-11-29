@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict NZghRO3z9ecWZtYO49P8jfPTNCdlkldapNOSuRwWdyT4zApCiVTnJlYyXY2SkaB
+\restrict CGlJH1BKpZym4mttqdbGvBwDc0A9JLT3akuX5vIIwRrgblBfnbRNPMFf866ZFft
 
 -- Dumped from database version 14.20 (Homebrew)
 -- Dumped by pg_dump version 14.20 (Homebrew)
@@ -68,6 +68,22 @@ $$;
 
 
 ALTER FUNCTION public.update_assets_price_from_ticks() OWNER TO wonny;
+
+--
+-- Name: update_recommendation_timestamp(); Type: FUNCTION; Schema: public; Owner: wonny
+--
+
+CREATE FUNCTION public.update_recommendation_timestamp() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION public.update_recommendation_timestamp() OWNER TO wonny;
 
 --
 -- Name: update_reference_sites_timestamp(); Type: FUNCTION; Schema: public; Owner: wonny
@@ -185,11 +201,29 @@ CREATE TABLE public.aegis_signal_history (
     result_1h numeric(5,2),
     result_1d numeric(5,2),
     is_success boolean,
-    verified_at timestamp without time zone
+    verified_at timestamp without time zone,
+    return_5m numeric(6,2),
+    return_10m numeric(6,2),
+    return_30m numeric(6,2),
+    return_60m numeric(6,2),
+    mfe numeric(6,2),
+    mae numeric(6,2),
+    trace_status character varying(20) DEFAULT 'pending'::character varying,
+    trace_started_at timestamp without time zone,
+    trace_completed_at timestamp without time zone,
+    failure_tag character varying(50),
+    market_context jsonb
 );
 
 
 ALTER TABLE public.aegis_signal_history OWNER TO wonny;
+
+--
+-- Name: COLUMN aegis_signal_history.market_context; Type: COMMENT; Schema: public; Owner: wonny
+--
+
+COMMENT ON COLUMN public.aegis_signal_history.market_context IS '신호 발생/종료 시점의 시장 컨텍스트 (KOSPI 등락률, 섹터 동향, 뉴스 감성 등)';
+
 
 --
 -- Name: aegis_signal_history_id_seq; Type: SEQUENCE; Schema: public; Owner: wonny
@@ -553,6 +587,260 @@ ALTER SEQUENCE public.daily_ohlcv_id_seq OWNED BY public.daily_ohlcv.id;
 
 
 --
+-- Name: daily_stock_performance; Type: TABLE; Schema: public; Owner: wonny
+--
+
+CREATE TABLE public.daily_stock_performance (
+    id integer NOT NULL,
+    date date NOT NULL,
+    stock_code character varying(6) NOT NULL,
+    stock_name character varying(100),
+    start_quantity integer DEFAULT 0,
+    end_quantity integer DEFAULT 0,
+    open_price numeric(10,2),
+    close_price numeric(10,2),
+    high_price numeric(10,2),
+    low_price numeric(10,2),
+    change_rate numeric(6,3),
+    buy_quantity integer DEFAULT 0,
+    buy_amount numeric(15,2) DEFAULT 0,
+    sell_quantity integer DEFAULT 0,
+    sell_amount numeric(15,2) DEFAULT 0,
+    realized_pnl numeric(15,2) DEFAULT 0,
+    unrealized_pnl numeric(15,2) DEFAULT 0,
+    aegis_signal character varying(20),
+    aegis_score integer,
+    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.daily_stock_performance OWNER TO wonny;
+
+--
+-- Name: TABLE daily_stock_performance; Type: COMMENT; Schema: public; Owner: wonny
+--
+
+COMMENT ON TABLE public.daily_stock_performance IS 'Phase 8: 일별 종목별 성과 상세';
+
+
+--
+-- Name: daily_stock_performance_id_seq; Type: SEQUENCE; Schema: public; Owner: wonny
+--
+
+CREATE SEQUENCE public.daily_stock_performance_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.daily_stock_performance_id_seq OWNER TO wonny;
+
+--
+-- Name: daily_stock_performance_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: wonny
+--
+
+ALTER SEQUENCE public.daily_stock_performance_id_seq OWNED BY public.daily_stock_performance.id;
+
+
+--
+-- Name: daily_summary; Type: TABLE; Schema: public; Owner: wonny
+--
+
+CREATE TABLE public.daily_summary (
+    date date NOT NULL,
+    total_asset numeric(15,2) DEFAULT 0,
+    cash_balance numeric(15,2) DEFAULT 0,
+    stock_value numeric(15,2) DEFAULT 0,
+    realized_pnl numeric(15,2) DEFAULT 0,
+    unrealized_pnl numeric(15,2) DEFAULT 0,
+    daily_pnl numeric(15,2) DEFAULT 0,
+    daily_pnl_rate numeric(6,3) DEFAULT 0,
+    cumulative_realized_pnl numeric(15,2) DEFAULT 0,
+    cumulative_pnl_rate numeric(8,4) DEFAULT 0,
+    trade_count integer DEFAULT 0,
+    buy_count integer DEFAULT 0,
+    sell_count integer DEFAULT 0,
+    buy_amount numeric(15,2) DEFAULT 0,
+    sell_amount numeric(15,2) DEFAULT 0,
+    win_trades integer DEFAULT 0,
+    lose_trades integer DEFAULT 0,
+    win_rate numeric(5,2) DEFAULT 0,
+    aegis_signal_count integer DEFAULT 0,
+    aegis_accuracy numeric(5,2) DEFAULT 0,
+    kospi_close numeric(10,2),
+    kospi_change_rate numeric(6,3),
+    kosdaq_close numeric(10,2),
+    kosdaq_change_rate numeric(6,3),
+    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    notes text
+);
+
+
+ALTER TABLE public.daily_summary OWNER TO wonny;
+
+--
+-- Name: TABLE daily_summary; Type: COMMENT; Schema: public; Owner: wonny
+--
+
+COMMENT ON TABLE public.daily_summary IS 'Phase 8: 일일 매매 성과 요약 테이블';
+
+
+--
+-- Name: COLUMN daily_summary.total_asset; Type: COMMENT; Schema: public; Owner: wonny
+--
+
+COMMENT ON COLUMN public.daily_summary.total_asset IS '총 자산 (현금 + 주식 평가금액)';
+
+
+--
+-- Name: COLUMN daily_summary.realized_pnl; Type: COMMENT; Schema: public; Owner: wonny
+--
+
+COMMENT ON COLUMN public.daily_summary.realized_pnl IS '당일 실현 손익';
+
+
+--
+-- Name: COLUMN daily_summary.unrealized_pnl; Type: COMMENT; Schema: public; Owner: wonny
+--
+
+COMMENT ON COLUMN public.daily_summary.unrealized_pnl IS '미실현 손익 (평가손익)';
+
+
+--
+-- Name: COLUMN daily_summary.daily_pnl; Type: COMMENT; Schema: public; Owner: wonny
+--
+
+COMMENT ON COLUMN public.daily_summary.daily_pnl IS '전일 대비 총 손익';
+
+
+--
+-- Name: COLUMN daily_summary.win_rate; Type: COMMENT; Schema: public; Owner: wonny
+--
+
+COMMENT ON COLUMN public.daily_summary.win_rate IS '당일 매매 승률 (%)';
+
+
+--
+-- Name: COLUMN daily_summary.aegis_accuracy; Type: COMMENT; Schema: public; Owner: wonny
+--
+
+COMMENT ON COLUMN public.daily_summary.aegis_accuracy IS 'AEGIS 신호 적중률 (%)';
+
+
+--
+-- Name: daily_supply; Type: TABLE; Schema: public; Owner: wonny
+--
+
+CREATE TABLE public.daily_supply (
+    id integer NOT NULL,
+    stock_code character varying(20) NOT NULL,
+    date date NOT NULL,
+    foreign_buy_volume bigint DEFAULT 0,
+    foreign_sell_volume bigint DEFAULT 0,
+    foreign_net_volume bigint DEFAULT 0,
+    foreign_holding_ratio numeric(10,4),
+    institution_buy_volume bigint DEFAULT 0,
+    institution_sell_volume bigint DEFAULT 0,
+    institution_net_volume bigint DEFAULT 0,
+    investment_trust_net bigint DEFAULT 0,
+    pension_fund_net bigint DEFAULT 0,
+    private_equity_net bigint DEFAULT 0,
+    bank_net bigint DEFAULT 0,
+    insurance_net bigint DEFAULT 0,
+    financial_invest_net bigint DEFAULT 0,
+    other_finance_net bigint DEFAULT 0,
+    other_corp_net bigint DEFAULT 0,
+    individual_net_volume bigint DEFAULT 0,
+    program_buy_volume bigint DEFAULT 0,
+    program_sell_volume bigint DEFAULT 0,
+    program_net_volume bigint DEFAULT 0,
+    data_source character varying(50),
+    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.daily_supply OWNER TO wonny;
+
+--
+-- Name: TABLE daily_supply; Type: COMMENT; Schema: public; Owner: wonny
+--
+
+COMMENT ON TABLE public.daily_supply IS 'Phase 11.5: 일별 투자자별 수급 데이터';
+
+
+--
+-- Name: daily_supply_id_seq; Type: SEQUENCE; Schema: public; Owner: wonny
+--
+
+CREATE SEQUENCE public.daily_supply_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.daily_supply_id_seq OWNER TO wonny;
+
+--
+-- Name: daily_supply_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: wonny
+--
+
+ALTER SEQUENCE public.daily_supply_id_seq OWNED BY public.daily_supply.id;
+
+
+--
+-- Name: data_source_priority; Type: TABLE; Schema: public; Owner: wonny
+--
+
+CREATE TABLE public.data_source_priority (
+    id integer NOT NULL,
+    data_type character varying(50) NOT NULL,
+    time_context character varying(50) NOT NULL,
+    primary_source character varying(50) NOT NULL,
+    fallback_source character varying(50),
+    description text
+);
+
+
+ALTER TABLE public.data_source_priority OWNER TO wonny;
+
+--
+-- Name: TABLE data_source_priority; Type: COMMENT; Schema: public; Owner: wonny
+--
+
+COMMENT ON TABLE public.data_source_priority IS 'Phase 11.5: 데이터 소스 우선순위 설정';
+
+
+--
+-- Name: data_source_priority_id_seq; Type: SEQUENCE; Schema: public; Owner: wonny
+--
+
+CREATE SEQUENCE public.data_source_priority_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.data_source_priority_id_seq OWNER TO wonny;
+
+--
+-- Name: data_source_priority_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: wonny
+--
+
+ALTER SEQUENCE public.data_source_priority_id_seq OWNED BY public.data_source_priority.id;
+
+
+--
 -- Name: data_sources; Type: TABLE; Schema: public; Owner: wonny
 --
 
@@ -619,6 +907,52 @@ ALTER TABLE public.data_sources_source_id_seq OWNER TO wonny;
 --
 
 ALTER SEQUENCE public.data_sources_source_id_seq OWNED BY public.data_sources.source_id;
+
+
+--
+-- Name: faiss_index_meta; Type: TABLE; Schema: public; Owner: wonny
+--
+
+CREATE TABLE public.faiss_index_meta (
+    id integer NOT NULL,
+    index_name character varying(100) NOT NULL,
+    index_path character varying(500),
+    dimension integer NOT NULL,
+    total_vectors integer DEFAULT 0,
+    last_updated timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    description text
+);
+
+
+ALTER TABLE public.faiss_index_meta OWNER TO wonny;
+
+--
+-- Name: TABLE faiss_index_meta; Type: COMMENT; Schema: public; Owner: wonny
+--
+
+COMMENT ON TABLE public.faiss_index_meta IS 'Phase 11.5: FAISS 벡터 인덱스 메타데이터';
+
+
+--
+-- Name: faiss_index_meta_id_seq; Type: SEQUENCE; Schema: public; Owner: wonny
+--
+
+CREATE SEQUENCE public.faiss_index_meta_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.faiss_index_meta_id_seq OWNER TO wonny;
+
+--
+-- Name: faiss_index_meta_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: wonny
+--
+
+ALTER SEQUENCE public.faiss_index_meta_id_seq OWNED BY public.faiss_index_meta.id;
 
 
 --
@@ -957,6 +1291,168 @@ ALTER SEQUENCE public.min_ticks_id_seq OWNED BY public.min_ticks.id;
 
 
 --
+-- Name: multiscale_patterns; Type: TABLE; Schema: public; Owner: wonny
+--
+
+CREATE TABLE public.multiscale_patterns (
+    id integer NOT NULL,
+    stock_code character varying(20) NOT NULL,
+    stock_name character varying(100),
+    pattern_date date NOT NULL,
+    pattern_type character varying(50),
+    embedding_5d jsonb,
+    embedding_20d jsonb,
+    embedding_60d jsonb,
+    return_5d numeric(10,4),
+    return_10d numeric(10,4),
+    return_20d numeric(10,4),
+    return_60d numeric(10,4),
+    max_return numeric(10,4),
+    foreign_flow_5d bigint,
+    institution_flow_5d bigint,
+    market character varying(10),
+    sector character varying(100),
+    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.multiscale_patterns OWNER TO wonny;
+
+--
+-- Name: TABLE multiscale_patterns; Type: COMMENT; Schema: public; Owner: wonny
+--
+
+COMMENT ON TABLE public.multiscale_patterns IS 'Phase 11.5: 멀티 타임프레임 패턴 저장';
+
+
+--
+-- Name: multiscale_patterns_id_seq; Type: SEQUENCE; Schema: public; Owner: wonny
+--
+
+CREATE SEQUENCE public.multiscale_patterns_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.multiscale_patterns_id_seq OWNER TO wonny;
+
+--
+-- Name: multiscale_patterns_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: wonny
+--
+
+ALTER SEQUENCE public.multiscale_patterns_id_seq OWNED BY public.multiscale_patterns.id;
+
+
+--
+-- Name: new_stock_recommendations; Type: TABLE; Schema: public; Owner: wonny
+--
+
+CREATE TABLE public.new_stock_recommendations (
+    id integer NOT NULL,
+    recommended_at timestamp without time zone NOT NULL,
+    stock_code character varying(10) NOT NULL,
+    stock_name character varying(50) NOT NULL,
+    market character varying(10) DEFAULT 'KOSPI'::character varying,
+    recommended_price integer NOT NULL,
+    change_rate double precision,
+    aegis_score double precision,
+    scanner_score double precision,
+    key_reasons jsonb,
+    detailed_analysis text,
+    rsi_14 double precision,
+    ma_5 double precision,
+    ma_20 double precision,
+    ma_60 double precision,
+    golden_cross boolean DEFAULT false,
+    foreigner_net bigint DEFAULT 0,
+    institution_net bigint DEFAULT 0,
+    traded_value bigint,
+    tracking_status character varying(20) DEFAULT 'active'::character varying,
+    tracking_end_date date,
+    final_price integer,
+    final_return double precision,
+    max_return double precision,
+    min_return double precision,
+    best_day integer,
+    worst_day integer,
+    created_at timestamp without time zone DEFAULT now(),
+    updated_at timestamp without time zone DEFAULT now()
+);
+
+
+ALTER TABLE public.new_stock_recommendations OWNER TO wonny;
+
+--
+-- Name: new_stock_recommendations_id_seq; Type: SEQUENCE; Schema: public; Owner: wonny
+--
+
+CREATE SEQUENCE public.new_stock_recommendations_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.new_stock_recommendations_id_seq OWNER TO wonny;
+
+--
+-- Name: new_stock_recommendations_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: wonny
+--
+
+ALTER SEQUENCE public.new_stock_recommendations_id_seq OWNED BY public.new_stock_recommendations.id;
+
+
+--
+-- Name: new_stock_tracking; Type: TABLE; Schema: public; Owner: wonny
+--
+
+CREATE TABLE public.new_stock_tracking (
+    id integer NOT NULL,
+    recommendation_id integer,
+    tracking_date date NOT NULL,
+    day_number integer NOT NULL,
+    open_price integer,
+    high_price integer,
+    low_price integer,
+    close_price integer,
+    volume bigint,
+    daily_return double precision,
+    cumulative_return double precision,
+    created_at timestamp without time zone DEFAULT now()
+);
+
+
+ALTER TABLE public.new_stock_tracking OWNER TO wonny;
+
+--
+-- Name: new_stock_tracking_id_seq; Type: SEQUENCE; Schema: public; Owner: wonny
+--
+
+CREATE SEQUENCE public.new_stock_tracking_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.new_stock_tracking_id_seq OWNER TO wonny;
+
+--
+-- Name: new_stock_tracking_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: wonny
+--
+
+ALTER SEQUENCE public.new_stock_tracking_id_seq OWNED BY public.new_stock_tracking.id;
+
+
+--
 -- Name: news; Type: TABLE; Schema: public; Owner: wonny
 --
 
@@ -1018,6 +1514,103 @@ ALTER TABLE public.news_id_seq OWNER TO wonny;
 --
 
 ALTER SEQUENCE public.news_id_seq OWNED BY public.news.id;
+
+
+--
+-- Name: news_impact_history; Type: TABLE; Schema: public; Owner: wonny
+--
+
+CREATE TABLE public.news_impact_history (
+    id integer NOT NULL,
+    stock_code character varying(20) NOT NULL,
+    stock_name character varying(100),
+    news_date date NOT NULL,
+    headline text NOT NULL,
+    keywords jsonb,
+    source character varying(100),
+    return_1d numeric(10,4) DEFAULT 0,
+    return_3d numeric(10,4) DEFAULT 0,
+    return_5d numeric(10,4) DEFAULT 0,
+    return_10d numeric(10,4) DEFAULT 0,
+    max_return numeric(10,4) DEFAULT 0,
+    impact_type character varying(20),
+    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.news_impact_history OWNER TO wonny;
+
+--
+-- Name: news_impact_history_id_seq; Type: SEQUENCE; Schema: public; Owner: wonny
+--
+
+CREATE SEQUENCE public.news_impact_history_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.news_impact_history_id_seq OWNER TO wonny;
+
+--
+-- Name: news_impact_history_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: wonny
+--
+
+ALTER SEQUENCE public.news_impact_history_id_seq OWNED BY public.news_impact_history.id;
+
+
+--
+-- Name: pattern_match_results; Type: TABLE; Schema: public; Owner: wonny
+--
+
+CREATE TABLE public.pattern_match_results (
+    id integer NOT NULL,
+    scan_date date NOT NULL,
+    current_stock_code character varying(20) NOT NULL,
+    current_stock_name character varying(100),
+    matched_pattern_id integer,
+    matched_stock_code character varying(20),
+    matched_stock_name character varying(100),
+    matched_pattern_date date,
+    similarity_score numeric(10,6),
+    predicted_return numeric(10,4),
+    confidence_level character varying(20),
+    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.pattern_match_results OWNER TO wonny;
+
+--
+-- Name: TABLE pattern_match_results; Type: COMMENT; Schema: public; Owner: wonny
+--
+
+COMMENT ON TABLE public.pattern_match_results IS 'Phase 11: 패턴 매칭 결과 (AI 추천 근거)';
+
+
+--
+-- Name: pattern_match_results_id_seq; Type: SEQUENCE; Schema: public; Owner: wonny
+--
+
+CREATE SEQUENCE public.pattern_match_results_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.pattern_match_results_id_seq OWNER TO wonny;
+
+--
+-- Name: pattern_match_results_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: wonny
+--
+
+ALTER SEQUENCE public.pattern_match_results_id_seq OWNED BY public.pattern_match_results.id;
 
 
 --
@@ -2514,6 +3107,58 @@ ALTER SEQUENCE public.stock_opinions_id_seq OWNED BY public.stock_opinions.id;
 
 
 --
+-- Name: stock_patterns; Type: TABLE; Schema: public; Owner: wonny
+--
+
+CREATE TABLE public.stock_patterns (
+    id integer NOT NULL,
+    stock_code character varying(20) NOT NULL,
+    stock_name character varying(100),
+    pattern_date date NOT NULL,
+    pattern_type character varying(50),
+    embedding jsonb NOT NULL,
+    return_5d numeric(10,4),
+    return_10d numeric(10,4),
+    return_20d numeric(10,4),
+    max_return numeric(10,4),
+    market character varying(10),
+    sector character varying(100),
+    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.stock_patterns OWNER TO wonny;
+
+--
+-- Name: TABLE stock_patterns; Type: COMMENT; Schema: public; Owner: wonny
+--
+
+COMMENT ON TABLE public.stock_patterns IS 'Phase 11: 과거 급등 종목 차트 패턴 벡터 저장';
+
+
+--
+-- Name: stock_patterns_id_seq; Type: SEQUENCE; Schema: public; Owner: wonny
+--
+
+CREATE SEQUENCE public.stock_patterns_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.stock_patterns_id_seq OWNER TO wonny;
+
+--
+-- Name: stock_patterns_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: wonny
+--
+
+ALTER SEQUENCE public.stock_patterns_id_seq OWNED BY public.stock_patterns.id;
+
+
+--
 -- Name: stock_peers; Type: TABLE; Schema: public; Owner: wonny
 --
 
@@ -3131,6 +3776,48 @@ COMMENT ON VIEW public.v_performance_summary IS '등급별/기간별 성과 요�
 
 
 --
+-- Name: v_recommendation_performance; Type: VIEW; Schema: public; Owner: wonny
+--
+
+CREATE VIEW public.v_recommendation_performance AS
+ SELECT date(new_stock_recommendations.recommended_at) AS rec_date,
+    new_stock_recommendations.market,
+    count(*) AS total_recommendations,
+    count(
+        CASE
+            WHEN ((new_stock_recommendations.tracking_status)::text = 'completed'::text) THEN 1
+            ELSE NULL::integer
+        END) AS completed,
+    count(
+        CASE
+            WHEN (new_stock_recommendations.final_return > (0)::double precision) THEN 1
+            ELSE NULL::integer
+        END) AS wins,
+    count(
+        CASE
+            WHEN (new_stock_recommendations.final_return <= (0)::double precision) THEN 1
+            ELSE NULL::integer
+        END) AS losses,
+    round((avg(new_stock_recommendations.final_return))::numeric, 2) AS avg_return,
+    round((max(new_stock_recommendations.max_return))::numeric, 2) AS best_mfe,
+    round((min(new_stock_recommendations.min_return))::numeric, 2) AS worst_mae,
+    round(((((count(
+        CASE
+            WHEN (new_stock_recommendations.final_return > (0)::double precision) THEN 1
+            ELSE NULL::integer
+        END))::double precision / (NULLIF(count(
+        CASE
+            WHEN ((new_stock_recommendations.tracking_status)::text = 'completed'::text) THEN 1
+            ELSE NULL::integer
+        END), 0))::double precision) * (100)::double precision))::numeric, 1) AS win_rate
+   FROM public.new_stock_recommendations
+  GROUP BY (date(new_stock_recommendations.recommended_at)), new_stock_recommendations.market
+  ORDER BY (date(new_stock_recommendations.recommended_at)) DESC;
+
+
+ALTER TABLE public.v_recommendation_performance OWNER TO wonny;
+
+--
 -- Name: v_reference_sites_by_category; Type: VIEW; Schema: public; Owner: wonny
 --
 
@@ -3396,10 +4083,38 @@ ALTER TABLE ONLY public.daily_ohlcv ALTER COLUMN id SET DEFAULT nextval('public.
 
 
 --
+-- Name: daily_stock_performance id; Type: DEFAULT; Schema: public; Owner: wonny
+--
+
+ALTER TABLE ONLY public.daily_stock_performance ALTER COLUMN id SET DEFAULT nextval('public.daily_stock_performance_id_seq'::regclass);
+
+
+--
+-- Name: daily_supply id; Type: DEFAULT; Schema: public; Owner: wonny
+--
+
+ALTER TABLE ONLY public.daily_supply ALTER COLUMN id SET DEFAULT nextval('public.daily_supply_id_seq'::regclass);
+
+
+--
+-- Name: data_source_priority id; Type: DEFAULT; Schema: public; Owner: wonny
+--
+
+ALTER TABLE ONLY public.data_source_priority ALTER COLUMN id SET DEFAULT nextval('public.data_source_priority_id_seq'::regclass);
+
+
+--
 -- Name: data_sources source_id; Type: DEFAULT; Schema: public; Owner: wonny
 --
 
 ALTER TABLE ONLY public.data_sources ALTER COLUMN source_id SET DEFAULT nextval('public.data_sources_source_id_seq'::regclass);
+
+
+--
+-- Name: faiss_index_meta id; Type: DEFAULT; Schema: public; Owner: wonny
+--
+
+ALTER TABLE ONLY public.faiss_index_meta ALTER COLUMN id SET DEFAULT nextval('public.faiss_index_meta_id_seq'::regclass);
 
 
 --
@@ -3438,10 +4153,45 @@ ALTER TABLE ONLY public.min_ticks ALTER COLUMN id SET DEFAULT nextval('public.mi
 
 
 --
+-- Name: multiscale_patterns id; Type: DEFAULT; Schema: public; Owner: wonny
+--
+
+ALTER TABLE ONLY public.multiscale_patterns ALTER COLUMN id SET DEFAULT nextval('public.multiscale_patterns_id_seq'::regclass);
+
+
+--
+-- Name: new_stock_recommendations id; Type: DEFAULT; Schema: public; Owner: wonny
+--
+
+ALTER TABLE ONLY public.new_stock_recommendations ALTER COLUMN id SET DEFAULT nextval('public.new_stock_recommendations_id_seq'::regclass);
+
+
+--
+-- Name: new_stock_tracking id; Type: DEFAULT; Schema: public; Owner: wonny
+--
+
+ALTER TABLE ONLY public.new_stock_tracking ALTER COLUMN id SET DEFAULT nextval('public.new_stock_tracking_id_seq'::regclass);
+
+
+--
 -- Name: news id; Type: DEFAULT; Schema: public; Owner: wonny
 --
 
 ALTER TABLE ONLY public.news ALTER COLUMN id SET DEFAULT nextval('public.news_id_seq'::regclass);
+
+
+--
+-- Name: news_impact_history id; Type: DEFAULT; Schema: public; Owner: wonny
+--
+
+ALTER TABLE ONLY public.news_impact_history ALTER COLUMN id SET DEFAULT nextval('public.news_impact_history_id_seq'::regclass);
+
+
+--
+-- Name: pattern_match_results id; Type: DEFAULT; Schema: public; Owner: wonny
+--
+
+ALTER TABLE ONLY public.pattern_match_results ALTER COLUMN id SET DEFAULT nextval('public.pattern_match_results_id_seq'::regclass);
 
 
 --
@@ -3575,6 +4325,13 @@ ALTER TABLE ONLY public.stock_news ALTER COLUMN id SET DEFAULT nextval('public.s
 --
 
 ALTER TABLE ONLY public.stock_opinions ALTER COLUMN id SET DEFAULT nextval('public.stock_opinions_id_seq'::regclass);
+
+
+--
+-- Name: stock_patterns id; Type: DEFAULT; Schema: public; Owner: wonny
+--
+
+ALTER TABLE ONLY public.stock_patterns ALTER COLUMN id SET DEFAULT nextval('public.stock_patterns_id_seq'::regclass);
 
 
 --
@@ -3723,6 +4480,54 @@ ALTER TABLE ONLY public.daily_ohlcv
 
 
 --
+-- Name: daily_stock_performance daily_stock_performance_pkey; Type: CONSTRAINT; Schema: public; Owner: wonny
+--
+
+ALTER TABLE ONLY public.daily_stock_performance
+    ADD CONSTRAINT daily_stock_performance_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: daily_summary daily_summary_pkey; Type: CONSTRAINT; Schema: public; Owner: wonny
+--
+
+ALTER TABLE ONLY public.daily_summary
+    ADD CONSTRAINT daily_summary_pkey PRIMARY KEY (date);
+
+
+--
+-- Name: daily_supply daily_supply_pkey; Type: CONSTRAINT; Schema: public; Owner: wonny
+--
+
+ALTER TABLE ONLY public.daily_supply
+    ADD CONSTRAINT daily_supply_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: daily_supply daily_supply_stock_code_date_key; Type: CONSTRAINT; Schema: public; Owner: wonny
+--
+
+ALTER TABLE ONLY public.daily_supply
+    ADD CONSTRAINT daily_supply_stock_code_date_key UNIQUE (stock_code, date);
+
+
+--
+-- Name: data_source_priority data_source_priority_data_type_time_context_key; Type: CONSTRAINT; Schema: public; Owner: wonny
+--
+
+ALTER TABLE ONLY public.data_source_priority
+    ADD CONSTRAINT data_source_priority_data_type_time_context_key UNIQUE (data_type, time_context);
+
+
+--
+-- Name: data_source_priority data_source_priority_pkey; Type: CONSTRAINT; Schema: public; Owner: wonny
+--
+
+ALTER TABLE ONLY public.data_source_priority
+    ADD CONSTRAINT data_source_priority_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: data_sources data_sources_pkey; Type: CONSTRAINT; Schema: public; Owner: wonny
 --
 
@@ -3736,6 +4541,22 @@ ALTER TABLE ONLY public.data_sources
 
 ALTER TABLE ONLY public.data_sources
     ADD CONSTRAINT data_sources_source_name_key UNIQUE (source_name);
+
+
+--
+-- Name: faiss_index_meta faiss_index_meta_index_name_key; Type: CONSTRAINT; Schema: public; Owner: wonny
+--
+
+ALTER TABLE ONLY public.faiss_index_meta
+    ADD CONSTRAINT faiss_index_meta_index_name_key UNIQUE (index_name);
+
+
+--
+-- Name: faiss_index_meta faiss_index_meta_pkey; Type: CONSTRAINT; Schema: public; Owner: wonny
+--
+
+ALTER TABLE ONLY public.faiss_index_meta
+    ADD CONSTRAINT faiss_index_meta_pkey PRIMARY KEY (id);
 
 
 --
@@ -3795,6 +4616,62 @@ ALTER TABLE ONLY public.min_ticks
 
 
 --
+-- Name: multiscale_patterns multiscale_patterns_pkey; Type: CONSTRAINT; Schema: public; Owner: wonny
+--
+
+ALTER TABLE ONLY public.multiscale_patterns
+    ADD CONSTRAINT multiscale_patterns_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: multiscale_patterns multiscale_patterns_stock_code_pattern_date_key; Type: CONSTRAINT; Schema: public; Owner: wonny
+--
+
+ALTER TABLE ONLY public.multiscale_patterns
+    ADD CONSTRAINT multiscale_patterns_stock_code_pattern_date_key UNIQUE (stock_code, pattern_date);
+
+
+--
+-- Name: new_stock_recommendations new_stock_recommendations_pkey; Type: CONSTRAINT; Schema: public; Owner: wonny
+--
+
+ALTER TABLE ONLY public.new_stock_recommendations
+    ADD CONSTRAINT new_stock_recommendations_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: new_stock_tracking new_stock_tracking_pkey; Type: CONSTRAINT; Schema: public; Owner: wonny
+--
+
+ALTER TABLE ONLY public.new_stock_tracking
+    ADD CONSTRAINT new_stock_tracking_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: new_stock_tracking new_stock_tracking_recommendation_id_tracking_date_key; Type: CONSTRAINT; Schema: public; Owner: wonny
+--
+
+ALTER TABLE ONLY public.new_stock_tracking
+    ADD CONSTRAINT new_stock_tracking_recommendation_id_tracking_date_key UNIQUE (recommendation_id, tracking_date);
+
+
+--
+-- Name: news_impact_history news_impact_history_pkey; Type: CONSTRAINT; Schema: public; Owner: wonny
+--
+
+ALTER TABLE ONLY public.news_impact_history
+    ADD CONSTRAINT news_impact_history_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: news_impact_history news_impact_history_stock_code_news_date_headline_key; Type: CONSTRAINT; Schema: public; Owner: wonny
+--
+
+ALTER TABLE ONLY public.news_impact_history
+    ADD CONSTRAINT news_impact_history_stock_code_news_date_headline_key UNIQUE (stock_code, news_date, headline);
+
+
+--
 -- Name: news news_pkey; Type: CONSTRAINT; Schema: public; Owner: wonny
 --
 
@@ -3808,6 +4685,14 @@ ALTER TABLE ONLY public.news
 
 ALTER TABLE ONLY public.news
     ADD CONSTRAINT news_stock_code_url_key UNIQUE (stock_code, url);
+
+
+--
+-- Name: pattern_match_results pattern_match_results_pkey; Type: CONSTRAINT; Schema: public; Owner: wonny
+--
+
+ALTER TABLE ONLY public.pattern_match_results
+    ADD CONSTRAINT pattern_match_results_pkey PRIMARY KEY (id);
 
 
 --
@@ -4067,6 +4952,22 @@ ALTER TABLE ONLY public.stock_opinions
 
 
 --
+-- Name: stock_patterns stock_patterns_pkey; Type: CONSTRAINT; Schema: public; Owner: wonny
+--
+
+ALTER TABLE ONLY public.stock_patterns
+    ADD CONSTRAINT stock_patterns_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: stock_patterns stock_patterns_stock_code_pattern_date_key; Type: CONSTRAINT; Schema: public; Owner: wonny
+--
+
+ALTER TABLE ONLY public.stock_patterns
+    ADD CONSTRAINT stock_patterns_stock_code_pattern_date_key UNIQUE (stock_code, pattern_date);
+
+
+--
 -- Name: stock_peers stock_peers_pkey; Type: CONSTRAINT; Schema: public; Owner: wonny
 --
 
@@ -4163,6 +5064,14 @@ ALTER TABLE ONLY public.smart_ai_retrospective
 
 
 --
+-- Name: daily_stock_performance uq_daily_stock_perf; Type: CONSTRAINT; Schema: public; Owner: wonny
+--
+
+ALTER TABLE ONLY public.daily_stock_performance
+    ADD CONSTRAINT uq_daily_stock_perf UNIQUE (date, stock_code);
+
+
+--
 -- Name: stock_news uq_news; Type: CONSTRAINT; Schema: public; Owner: wonny
 --
 
@@ -4195,6 +5104,34 @@ ALTER TABLE ONLY public.wisefn_analyst_reports
 
 
 --
+-- Name: idx_aegis_signal_active; Type: INDEX; Schema: public; Owner: wonny
+--
+
+CREATE INDEX idx_aegis_signal_active ON public.aegis_signal_history USING btree (stock_code, recorded_at DESC) WHERE ((trace_status)::text = ANY ((ARRAY['pending'::character varying, 'tracking'::character varying])::text[]));
+
+
+--
+-- Name: INDEX idx_aegis_signal_active; Type: COMMENT; Schema: public; Owner: wonny
+--
+
+COMMENT ON INDEX public.idx_aegis_signal_active IS 'Phase 7.5: 활성 신호 추적 조회 최적화';
+
+
+--
+-- Name: idx_aegis_signal_failure; Type: INDEX; Schema: public; Owner: wonny
+--
+
+CREATE INDEX idx_aegis_signal_failure ON public.aegis_signal_history USING btree (failure_tag, recorded_at DESC) WHERE (failure_tag IS NOT NULL);
+
+
+--
+-- Name: INDEX idx_aegis_signal_failure; Type: COMMENT; Schema: public; Owner: wonny
+--
+
+COMMENT ON INDEX public.idx_aegis_signal_failure IS 'Phase 7.5: 실패 원인 분석 조회 최적화';
+
+
+--
 -- Name: idx_aegis_signal_history_recorded; Type: INDEX; Schema: public; Owner: wonny
 --
 
@@ -4213,6 +5150,27 @@ CREATE INDEX idx_aegis_signal_history_stock ON public.aegis_signal_history USING
 --
 
 CREATE UNIQUE INDEX idx_aegis_signal_unique_hourly ON public.aegis_signal_history USING btree (stock_code, signal_type, date(recorded_at), EXTRACT(hour FROM recorded_at));
+
+
+--
+-- Name: idx_aegis_signal_verification; Type: INDEX; Schema: public; Owner: wonny
+--
+
+CREATE INDEX idx_aegis_signal_verification ON public.aegis_signal_history USING btree (signal_type, recorded_at DESC);
+
+
+--
+-- Name: INDEX idx_aegis_signal_verification; Type: COMMENT; Schema: public; Owner: wonny
+--
+
+COMMENT ON INDEX public.idx_aegis_signal_verification IS 'Phase 7.5: 검증 대시보드 조회 최적화';
+
+
+--
+-- Name: idx_aegis_trace_status; Type: INDEX; Schema: public; Owner: wonny
+--
+
+CREATE INDEX idx_aegis_trace_status ON public.aegis_signal_history USING btree (trace_status) WHERE ((trace_status)::text <> 'completed'::text);
 
 
 --
@@ -4342,6 +5300,62 @@ CREATE INDEX idx_daily_ohlcv_date ON public.daily_ohlcv USING btree (date DESC);
 
 
 --
+-- Name: idx_daily_ohlcv_date_brin; Type: INDEX; Schema: public; Owner: wonny
+--
+
+CREATE INDEX idx_daily_ohlcv_date_brin ON public.daily_ohlcv USING brin (date);
+
+
+--
+-- Name: idx_daily_ohlcv_stock_date_v2; Type: INDEX; Schema: public; Owner: wonny
+--
+
+CREATE INDEX idx_daily_ohlcv_stock_date_v2 ON public.daily_ohlcv USING btree (stock_code, date DESC) WHERE (date > '2024-01-01'::date);
+
+
+--
+-- Name: idx_daily_stock_perf_date; Type: INDEX; Schema: public; Owner: wonny
+--
+
+CREATE INDEX idx_daily_stock_perf_date ON public.daily_stock_performance USING btree (date DESC);
+
+
+--
+-- Name: idx_daily_stock_perf_stock; Type: INDEX; Schema: public; Owner: wonny
+--
+
+CREATE INDEX idx_daily_stock_perf_stock ON public.daily_stock_performance USING btree (stock_code, date DESC);
+
+
+--
+-- Name: idx_daily_supply_code; Type: INDEX; Schema: public; Owner: wonny
+--
+
+CREATE INDEX idx_daily_supply_code ON public.daily_supply USING btree (stock_code);
+
+
+--
+-- Name: idx_daily_supply_date; Type: INDEX; Schema: public; Owner: wonny
+--
+
+CREATE INDEX idx_daily_supply_date ON public.daily_supply USING btree (date DESC);
+
+
+--
+-- Name: idx_daily_supply_foreign_net; Type: INDEX; Schema: public; Owner: wonny
+--
+
+CREATE INDEX idx_daily_supply_foreign_net ON public.daily_supply USING btree (foreign_net_volume DESC);
+
+
+--
+-- Name: idx_daily_supply_inst_net; Type: INDEX; Schema: public; Owner: wonny
+--
+
+CREATE INDEX idx_daily_supply_inst_net ON public.daily_supply USING btree (institution_net_volume DESC);
+
+
+--
 -- Name: idx_data_sources_reliability; Type: INDEX; Schema: public; Owner: wonny
 --
 
@@ -4440,10 +5454,80 @@ CREATE INDEX idx_min_ticks_code_ts_optimized ON public.min_ticks USING btree (st
 
 
 --
+-- Name: idx_min_ticks_stock_timestamp; Type: INDEX; Schema: public; Owner: wonny
+--
+
+CREATE INDEX idx_min_ticks_stock_timestamp ON public.min_ticks USING btree (stock_code, "timestamp" DESC);
+
+
+--
+-- Name: INDEX idx_min_ticks_stock_timestamp; Type: COMMENT; Schema: public; Owner: wonny
+--
+
+COMMENT ON INDEX public.idx_min_ticks_stock_timestamp IS 'Phase 7.5: 종목별 시계열 데이터 조회 최적화';
+
+
+--
 -- Name: idx_min_ticks_timestamp; Type: INDEX; Schema: public; Owner: wonny
 --
 
 CREATE INDEX idx_min_ticks_timestamp ON public.min_ticks USING btree ("timestamp" DESC);
+
+
+--
+-- Name: idx_min_ticks_timestamp_brin; Type: INDEX; Schema: public; Owner: wonny
+--
+
+CREATE INDEX idx_min_ticks_timestamp_brin ON public.min_ticks USING brin ("timestamp");
+
+
+--
+-- Name: INDEX idx_min_ticks_timestamp_brin; Type: COMMENT; Schema: public; Owner: wonny
+--
+
+COMMENT ON INDEX public.idx_min_ticks_timestamp_brin IS 'Phase 7.5: 시계열 데이터 범위 조회 최적화 (BRIN index)';
+
+
+--
+-- Name: idx_multiscale_code; Type: INDEX; Schema: public; Owner: wonny
+--
+
+CREATE INDEX idx_multiscale_code ON public.multiscale_patterns USING btree (stock_code);
+
+
+--
+-- Name: idx_multiscale_date; Type: INDEX; Schema: public; Owner: wonny
+--
+
+CREATE INDEX idx_multiscale_date ON public.multiscale_patterns USING btree (pattern_date);
+
+
+--
+-- Name: idx_multiscale_return; Type: INDEX; Schema: public; Owner: wonny
+--
+
+CREATE INDEX idx_multiscale_return ON public.multiscale_patterns USING btree (max_return DESC);
+
+
+--
+-- Name: idx_news_impact_code_date; Type: INDEX; Schema: public; Owner: wonny
+--
+
+CREATE INDEX idx_news_impact_code_date ON public.news_impact_history USING btree (stock_code, news_date DESC);
+
+
+--
+-- Name: idx_news_impact_keywords; Type: INDEX; Schema: public; Owner: wonny
+--
+
+CREATE INDEX idx_news_impact_keywords ON public.news_impact_history USING gin (keywords);
+
+
+--
+-- Name: idx_news_impact_type; Type: INDEX; Schema: public; Owner: wonny
+--
+
+CREATE INDEX idx_news_impact_type ON public.news_impact_history USING btree (impact_type);
 
 
 --
@@ -4472,6 +5556,27 @@ CREATE INDEX idx_news_stock_code ON public.news USING btree (stock_code);
 --
 
 CREATE INDEX idx_news_stock_published ON public.news USING btree (stock_code, published_at DESC);
+
+
+--
+-- Name: idx_pattern_match_current; Type: INDEX; Schema: public; Owner: wonny
+--
+
+CREATE INDEX idx_pattern_match_current ON public.pattern_match_results USING btree (current_stock_code);
+
+
+--
+-- Name: idx_pattern_match_date; Type: INDEX; Schema: public; Owner: wonny
+--
+
+CREATE INDEX idx_pattern_match_date ON public.pattern_match_results USING btree (scan_date);
+
+
+--
+-- Name: idx_pattern_match_similarity; Type: INDEX; Schema: public; Owner: wonny
+--
+
+CREATE INDEX idx_pattern_match_similarity ON public.pattern_match_results USING btree (similarity_score DESC);
 
 
 --
@@ -4591,6 +5696,41 @@ CREATE INDEX idx_price_tracking_rec_id ON public.smart_price_tracking USING btre
 --
 
 CREATE INDEX idx_price_tracking_stock ON public.smart_price_tracking USING btree (stock_code);
+
+
+--
+-- Name: idx_rec_code; Type: INDEX; Schema: public; Owner: wonny
+--
+
+CREATE INDEX idx_rec_code ON public.new_stock_recommendations USING btree (stock_code);
+
+
+--
+-- Name: idx_rec_date; Type: INDEX; Schema: public; Owner: wonny
+--
+
+CREATE INDEX idx_rec_date ON public.new_stock_recommendations USING btree (recommended_at);
+
+
+--
+-- Name: idx_rec_market; Type: INDEX; Schema: public; Owner: wonny
+--
+
+CREATE INDEX idx_rec_market ON public.new_stock_recommendations USING btree (market);
+
+
+--
+-- Name: idx_rec_status; Type: INDEX; Schema: public; Owner: wonny
+--
+
+CREATE INDEX idx_rec_status ON public.new_stock_recommendations USING btree (tracking_status);
+
+
+--
+-- Name: idx_rec_unique; Type: INDEX; Schema: public; Owner: wonny
+--
+
+CREATE UNIQUE INDEX idx_rec_unique ON public.new_stock_recommendations USING btree (stock_code, date(recommended_at));
 
 
 --
@@ -4776,17 +5916,24 @@ CREATE INDEX idx_smart_rec_grade ON public.smart_recommendations USING btree (ai
 
 
 --
--- Name: idx_smart_rec_score; Type: INDEX; Schema: public; Owner: wonny
---
-
-CREATE INDEX idx_smart_rec_score ON public.smart_recommendations USING btree (final_score DESC);
-
-
---
 -- Name: idx_stock_assets_active; Type: INDEX; Schema: public; Owner: wonny
 --
 
 CREATE INDEX idx_stock_assets_active ON public.stock_assets USING btree (is_active) WHERE (is_active = true);
+
+
+--
+-- Name: idx_stock_assets_holding; Type: INDEX; Schema: public; Owner: wonny
+--
+
+CREATE INDEX idx_stock_assets_holding ON public.stock_assets USING btree (stock_code) WHERE (quantity > 0);
+
+
+--
+-- Name: INDEX idx_stock_assets_holding; Type: COMMENT; Schema: public; Owner: wonny
+--
+
+COMMENT ON INDEX public.idx_stock_assets_holding IS 'Phase 7.5: 보유종목 조회 최적화 (partial index)';
 
 
 --
@@ -4818,13 +5965,6 @@ CREATE INDEX idx_stock_financials_collected ON public.stock_financials USING btr
 
 
 --
--- Name: idx_stock_fundamentals_updated; Type: INDEX; Schema: public; Owner: wonny
---
-
-CREATE INDEX idx_stock_fundamentals_updated ON public.stock_fundamentals USING btree (updated_at);
-
-
---
 -- Name: idx_stock_news_code; Type: INDEX; Schema: public; Owner: wonny
 --
 
@@ -4853,6 +5993,20 @@ CREATE INDEX idx_stock_news_published ON public.stock_news USING btree (publishe
 
 
 --
+-- Name: idx_stock_news_published_brin; Type: INDEX; Schema: public; Owner: wonny
+--
+
+CREATE INDEX idx_stock_news_published_brin ON public.stock_news USING brin (published_at);
+
+
+--
+-- Name: INDEX idx_stock_news_published_brin; Type: COMMENT; Schema: public; Owner: wonny
+--
+
+COMMENT ON INDEX public.idx_stock_news_published_brin IS 'Phase 7.5: 뉴스 범위 조회 최적화 (BRIN index)';
+
+
+--
 -- Name: idx_stock_news_publisher; Type: INDEX; Schema: public; Owner: wonny
 --
 
@@ -4867,6 +6021,20 @@ CREATE INDEX idx_stock_news_sentiment ON public.stock_news USING btree (sentimen
 
 
 --
+-- Name: idx_stock_news_stock_published; Type: INDEX; Schema: public; Owner: wonny
+--
+
+CREATE INDEX idx_stock_news_stock_published ON public.stock_news USING btree (stock_code, published_at DESC);
+
+
+--
+-- Name: INDEX idx_stock_news_stock_published; Type: COMMENT; Schema: public; Owner: wonny
+--
+
+COMMENT ON INDEX public.idx_stock_news_stock_published IS 'Phase 7.5: 종목별 뉴스 시계열 조회 최적화';
+
+
+--
 -- Name: idx_stock_opinions_code; Type: INDEX; Schema: public; Owner: wonny
 --
 
@@ -4878,6 +6046,34 @@ CREATE INDEX idx_stock_opinions_code ON public.stock_opinions USING btree (stock
 --
 
 CREATE INDEX idx_stock_opinions_date ON public.stock_opinions USING btree (opinion_date DESC);
+
+
+--
+-- Name: idx_stock_patterns_code; Type: INDEX; Schema: public; Owner: wonny
+--
+
+CREATE INDEX idx_stock_patterns_code ON public.stock_patterns USING btree (stock_code);
+
+
+--
+-- Name: idx_stock_patterns_date; Type: INDEX; Schema: public; Owner: wonny
+--
+
+CREATE INDEX idx_stock_patterns_date ON public.stock_patterns USING btree (pattern_date);
+
+
+--
+-- Name: idx_stock_patterns_return; Type: INDEX; Schema: public; Owner: wonny
+--
+
+CREATE INDEX idx_stock_patterns_return ON public.stock_patterns USING btree (max_return DESC);
+
+
+--
+-- Name: idx_stock_patterns_type; Type: INDEX; Schema: public; Owner: wonny
+--
+
+CREATE INDEX idx_stock_patterns_type ON public.stock_patterns USING btree (pattern_type);
 
 
 --
@@ -4965,6 +6161,20 @@ CREATE INDEX idx_supply_demand_code_date ON public.stock_supply_demand USING btr
 
 
 --
+-- Name: idx_tracking_date; Type: INDEX; Schema: public; Owner: wonny
+--
+
+CREATE INDEX idx_tracking_date ON public.new_stock_tracking USING btree (tracking_date);
+
+
+--
+-- Name: idx_tracking_rec; Type: INDEX; Schema: public; Owner: wonny
+--
+
+CREATE INDEX idx_tracking_rec ON public.new_stock_tracking USING btree (recommendation_id);
+
+
+--
 -- Name: idx_trade_history_code; Type: INDEX; Schema: public; Owner: wonny
 --
 
@@ -5025,6 +6235,13 @@ CREATE INDEX idx_wisefn_stock_date ON public.wisefn_analyst_reports USING btree 
 --
 
 CREATE TRIGGER trigger_update_analysis_domains_timestamp BEFORE UPDATE ON public.analysis_domains FOR EACH ROW EXECUTE FUNCTION public.update_analysis_domain_timestamp();
+
+
+--
+-- Name: new_stock_recommendations trigger_update_rec_timestamp; Type: TRIGGER; Schema: public; Owner: wonny
+--
+
+CREATE TRIGGER trigger_update_rec_timestamp BEFORE UPDATE ON public.new_stock_recommendations FOR EACH ROW EXECUTE FUNCTION public.update_recommendation_timestamp();
 
 
 --
@@ -5191,11 +6408,27 @@ ALTER TABLE ONLY public.min_ticks
 
 
 --
+-- Name: new_stock_tracking new_stock_tracking_recommendation_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: wonny
+--
+
+ALTER TABLE ONLY public.new_stock_tracking
+    ADD CONSTRAINT new_stock_tracking_recommendation_id_fkey FOREIGN KEY (recommendation_id) REFERENCES public.new_stock_recommendations(id) ON DELETE CASCADE;
+
+
+--
 -- Name: news news_stock_code_fkey; Type: FK CONSTRAINT; Schema: public; Owner: wonny
 --
 
 ALTER TABLE ONLY public.news
     ADD CONSTRAINT news_stock_code_fkey FOREIGN KEY (stock_code) REFERENCES public.stocks(stock_code);
+
+
+--
+-- Name: pattern_match_results pattern_match_results_matched_pattern_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: wonny
+--
+
+ALTER TABLE ONLY public.pattern_match_results
+    ADD CONSTRAINT pattern_match_results_matched_pattern_id_fkey FOREIGN KEY (matched_pattern_id) REFERENCES public.stock_patterns(id);
 
 
 --
@@ -5386,5 +6619,5 @@ ALTER TABLE ONLY public.verification_results
 -- PostgreSQL database dump complete
 --
 
-\unrestrict NZghRO3z9ecWZtYO49P8jfPTNCdlkldapNOSuRwWdyT4zApCiVTnJlYyXY2SkaB
+\unrestrict CGlJH1BKpZym4mttqdbGvBwDc0A9JLT3akuX5vIIwRrgblBfnbRNPMFf866ZFft
 
